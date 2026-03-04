@@ -1,0 +1,19 @@
+# Agent 任务模式：只挂载一个 workspace 目录，配置与输出均在 workspace 内
+# workspace 内放: agent-task.json（或 agent-task.yaml）, skills/, mcp_servers.json, output/（写 log/result）
+# 启动: docker compose up -d
+
+services:
+  agent-task:
+    build:
+      context: .
+      dockerfile: docker/agent-task/Dockerfile
+    image: agent-task:v0.1.0
+    container_name: agent-task
+    environment:
+      TASK_CONFIG: /workspace/agent-task.json
+      OUTPUT_DIR: /workspace/output
+      TRIGGER_MODE: once
+    volumes:
+      # 仅挂载一个 workspace，其中含配置、skills、mcp、输出目录
+      - ./workspace:/workspace
+    restart: "no"
