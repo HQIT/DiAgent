@@ -9,7 +9,7 @@ from loguru import logger
 import sys
 
 from .config import get_settings
-from .api.routes import chat, tools, sessions
+from .api.routes import chat, tools, sessions, events
 from .mcp.client import get_mcp_client, _mcp_client
 
 
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(tools.router)
     app.include_router(sessions.router)
+    app.include_router(events.router)
     
     # 全局异常处理
     @app.exception_handler(Exception)

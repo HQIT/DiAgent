@@ -42,10 +42,17 @@ def get_workspace_root() -> Path:
 def get_system_prompt() -> str:
     """生成动态系统提示词
     
-    Returns:
-        包含当前时间的系统提示词
+    如果设置了 AGENT_SYSTEM_PROMPT 环境变量，使用该值（附加当前时间）。
+    否则使用默认提示词。
     """
+    settings = get_settings()
     now = datetime.now()
+    if settings.agent_system_prompt:
+        current_time = now.strftime("%Y年%m月%d日 %H:%M:%S")
+        weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        weekday = weekday_names[now.weekday()]
+        return f"{settings.agent_system_prompt}\n\n当前时间：{current_time} {weekday}"
+    
     current_time = now.strftime("%Y年%m月%d日 %H:%M:%S")
     weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekday_names[now.weekday()]
