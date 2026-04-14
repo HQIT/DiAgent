@@ -91,7 +91,7 @@ class BaseLLMAdapter(ABC):
             elif role == "assistant":
                 result.append(AIMessage(
                     content=content,
-                    tool_calls=msg.get("tool_calls")
+                    tool_calls=msg.get("tool_calls") or []
                 ))
             elif role == "tool":
                 result.append(ToolMessage(
