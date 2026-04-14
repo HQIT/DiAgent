@@ -90,8 +90,7 @@ def get_models_config() -> Dict[str, Any]:
     config_path = Path(settings.llm_models_config_path)
     
     if not config_path.exists():
-        _models_config = {}
-        return _models_config
+        return {}
     
     with open(config_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}

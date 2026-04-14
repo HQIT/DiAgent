@@ -5,7 +5,7 @@
 #     -e TASK_CONFIG=/config/task.yaml -e OUTPUT_DIR=/out -e TRIGGER_MODE=once \
 #     agent-task:latest
 
-FROM docker.1ms.run/python:3.12-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
