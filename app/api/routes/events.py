@@ -1,4 +1,4 @@
-"""接收 NANA-OS 投递的 CloudEvents 事件"""
+"""接收 DiOS 投递的 CloudEvents 事件"""
 
 import uuid
 from typing import Any, Optional
@@ -41,7 +41,7 @@ def _event_to_user_message(event: CloudEvent) -> str:
 
 @router.post("/events")
 async def receive_event(event: CloudEvent):
-    """接收 NANA-OS 投递的事件，交给 Agent 处理"""
+    """接收 DiOS 投递的事件，交给 Agent 处理"""
     logger.info(f"收到事件: type={event.type}, source={event.source}, id={event.id}")
 
     settings = get_settings()

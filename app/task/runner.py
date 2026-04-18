@@ -18,6 +18,7 @@ from ..llm import get_llm
 from ..mcp.client import MCPClientManager
 from ..mcp.tool_registry import ToolRegistry, wrap_tool_with_fallback, wrap_tools_with_fallback
 from ..middleware.custom_middlewares import get_logging_middlewares
+from ..tools import shell_tool
 
 from .config_schema import TaskConfig, SubagentSpec
 
@@ -191,6 +192,7 @@ class TaskRunner:
         mcp_client = await self._get_mcp_client(workspace_root)
         registry = ToolRegistry(mcp_client)
         tools = wrap_tools_with_fallback(registry.get_langchain_tools(self.config.tools))
+        tools = list(tools) + [shell_tool]
 
         # Skills 路径
         if self.config.skill_names:
@@ -286,6 +288,7 @@ class TaskRunner:
                 except (TypeError, ValueError):
                     stream = None
                 if stream is not None:
+                    latest_messages: List[BaseMessage] = []
                     with open(log_path, "w", encoding="utf-8") as log_file:
                         log_file.write(f"[start] task: {self.config.task[:200]}...\n" if len(self.config.task) > 200 else f"[start] task: {self.config.task}\n")
                         log_file.flush()
@@ -306,12 +309,16 @@ class TaskRunner:
                                 node_update = data if isinstance(data, (list, tuple)) and len(data) == 2 else (None, data)
                                 update = node_update[1] if isinstance(node_update, (list, tuple)) and len(node_update) == 2 else data
                                 if isinstance(update, dict):
-                                    for msg in update.get("messages") or []:
+                                    update_messages = update.get("messages") or []
+                                    if update_messages:
+                                        latest_messages = list(update_messages)
+                                    for msg in update_messages:
                                         for line in _single_message_to_log_lines(msg):
                                             log_file.write(line + "\n")
                                         log_file.flush()
                     if not result:
-                        result = await agent.ainvoke({"messages": input_messages}, config=run_config)
+                        # astream 已经执行过任务，避免再触发一次 ainvoke 导致重复副作用。
+                        result = {"messages": latest_messages}
                 else:
                     result = await agent.ainvoke({"messages": input_messages}, config=run_config)
                     messages = result.get("messages", [])

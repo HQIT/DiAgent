@@ -9,6 +9,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# 系统工具：git / curl 供 Agent 在容器内操作 Git 平台（clone/push + REST API）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # 安装依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --index-url https://mirrors.aliyun.com/pypi/simple/

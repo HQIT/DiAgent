@@ -17,6 +17,7 @@ from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
+from ..tools import shell_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
@@ -117,11 +118,12 @@ class AgentService:
         # 1. 预处理请求
         processed = self.preprocessor.process(request)
         
-        # 2. 获取选择的工具（tool_ids 现在就是工具名称）
-        tools = self.tool_registry.get_langchain_tools(
-            processed.selected_tool_ids if processed.selected_tool_ids else None
-        )
-        
+        # 2. 获取选择的工具（空列表表示不启用工具；不再默认注入 shell）
+        selected_tool_ids = processed.selected_tool_ids or []
+        tools = self.tool_registry.get_langchain_tools(selected_tool_ids)
+        if "shell" in selected_tool_ids:
+            tools = list(tools) + [shell_tool]
+
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "
                    f"tools={len(tools)}, "
@@ -164,9 +166,11 @@ class AgentService:
         """
         # 获取LLM
         llm = get_llm(processed.model, temperature=processed.temperature)
-        
-        # 转换消息为LangChain格式
-        lc_messages = self._to_langchain_messages(messages)
+
+        # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
+        # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
+        tool_system_prompt, tool_messages = self._split_system_prompt(messages)
+        lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
         
         if tools:
             # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
@@ -181,7 +185,7 @@ class AgentService:
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": tool_system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }
@@ -235,9 +239,11 @@ class AgentService:
         
         # 获取LLM
         llm = get_llm(processed.model, temperature=processed.temperature)
-        
-        # 转换消息
-        lc_messages = self._to_langchain_messages(messages)
+
+        # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
+        # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
+        tool_system_prompt, tool_messages = self._split_system_prompt(messages)
+        lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
         
         # 最终回答收集
         collected_content = []
@@ -261,7 +267,7 @@ class AgentService:
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": tool_system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }
@@ -412,7 +418,25 @@ class AgentService:
             elif msg.role == "assistant":
                 result.append(AIMessage(content=msg.content or ""))
         return result
-    
+
+    def _split_system_prompt(self, messages: List[ChatMessage]) -> tuple[str, List[ChatMessage]]:
+        """拆分 system prompt 与非 system 消息。
+
+        deepagents 会通过 `system_prompt` 管理系统提示，若同时把 system 放在
+        messages 里，会在部分 OpenAI 兼容网关（如 ECNU）触发多 system 问题。
+        """
+        system_parts: List[str] = []
+        rest: List[ChatMessage] = []
+        for msg in messages:
+            if msg.role == "system":
+                if msg.content:
+                    system_parts.append(msg.content)
+            else:
+                rest.append(msg)
+        if system_parts:
+            return "\n\n".join(system_parts), rest
+        return get_system_prompt(), rest
+
     def add_middleware(self, middleware: AgentMiddleware) -> None:
         """添加中间件
         
