@@ -205,6 +205,10 @@ class TaskRunner:
 
         backend = FilesystemBackend(root_dir=str(workspace_root), virtual_mode=False)
         middlewares = list(get_logging_middlewares())
+        enabled_middlewares = (self.config.middleware_config or {}).get("enabled") if self.config.middleware_config else None
+        if enabled_middlewares:
+            enabled_set = {str(x).strip() for x in enabled_middlewares if str(x).strip()}
+            middlewares = [m for m in middlewares if getattr(m, "__name__", "") in enabled_set]
 
         # Subagents（转为 deepagents 期望的 dict；支持单独 mcp_config_path、skills_dir、skill_names）
         subagents_list: Optional[List[dict]] = None

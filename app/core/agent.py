@@ -189,12 +189,13 @@ class AgentService:
                 "backend": backend,
                 "skills": [skills_path],
             }
-            if self.middlewares:
-                agent_kwargs["middleware"] = self.middlewares
+            middlewares = self._resolve_middlewares(processed)
+            if middlewares:
+                agent_kwargs["middleware"] = middlewares
             
             agent = create_deep_agent(**agent_kwargs)
             
-            recursion_limit = get_settings().agent_recursion_limit
+            recursion_limit = self._resolve_recursion_limit(processed)
             config = {"recursion_limit": recursion_limit}
             result = await agent.ainvoke(
                 {"messages": lc_messages},
@@ -271,8 +272,9 @@ class AgentService:
                 "backend": backend,
                 "skills": [skills_path],
             }
-            if self.middlewares:
-                agent_kwargs["middleware"] = self.middlewares
+            middlewares = self._resolve_middlewares(processed)
+            if middlewares:
+                agent_kwargs["middleware"] = middlewares
             
             agent = create_deep_agent(**agent_kwargs)
             
@@ -280,7 +282,7 @@ class AgentService:
             current_mode = None
             pending_chunks = []
             
-            recursion_limit = get_settings().agent_recursion_limit
+            recursion_limit = self._resolve_recursion_limit(processed)
             config = {"recursion_limit": recursion_limit}
             try:
                 async for event in agent.astream_events(
@@ -418,6 +420,31 @@ class AgentService:
             elif msg.role == "assistant":
                 result.append(AIMessage(content=msg.content or ""))
         return result
+
+    def _resolve_recursion_limit(self, processed: ProcessedRequest) -> int:
+        """优先使用请求中的 reasoning.recursion_limit，否则使用全局配置。"""
+        limit = get_settings().agent_recursion_limit
+        reasoning = (processed.custom_fields or {}).get("reasoning", {})
+        if isinstance(reasoning, dict):
+            val = reasoning.get("recursion_limit")
+            if isinstance(val, int) and val > 0:
+                return val
+            if isinstance(val, str) and val.isdigit() and int(val) > 0:
+                return int(val)
+        return limit
+
+    def _resolve_middlewares(self, processed: ProcessedRequest) -> List[AgentMiddleware]:
+        """按请求中的 middleware_config.enabled 过滤中间件。"""
+        default = list(self.middlewares or [])
+        cfg = processed.middleware_config or {}
+        enabled = cfg.get("enabled") if isinstance(cfg, dict) else None
+        if not enabled:
+            return default
+        enabled_set = {str(x).strip() for x in enabled if str(x).strip()}
+        if not enabled_set:
+            return default
+        filtered = [m for m in default if getattr(m, "__name__", "") in enabled_set]
+        return filtered
 
     def _split_system_prompt(self, messages: List[ChatMessage]) -> tuple[str, List[ChatMessage]]:
         """拆分 system prompt 与非 system 消息。
