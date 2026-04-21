@@ -18,7 +18,7 @@ from ..llm import get_llm
 from ..mcp.client import MCPClientManager
 from ..mcp.tool_registry import ToolRegistry, wrap_tool_with_fallback, wrap_tools_with_fallback
 from ..middleware.custom_middlewares import get_logging_middlewares
-from ..tools import shell_tool
+from ..tools import shell_tool, publish_event_tool
 
 from .config_schema import TaskConfig, SubagentSpec
 
@@ -192,7 +192,7 @@ class TaskRunner:
         mcp_client = await self._get_mcp_client(workspace_root)
         registry = ToolRegistry(mcp_client)
         tools = wrap_tools_with_fallback(registry.get_langchain_tools(self.config.tools))
-        tools = list(tools) + [shell_tool]
+        tools = list(tools) + [shell_tool, publish_event_tool]
 
         # Skills 路径
         if self.config.skill_names:
@@ -277,6 +277,8 @@ class TaskRunner:
 
         agent = create_deep_agent(**agent_kwargs)
         run_config = {"recursion_limit": self.config.recursion_limit}
+        if self.config.max_tool_rounds is not None:
+            run_config["max_tool_rounds"] = int(self.config.max_tool_rounds)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         result: Dict[str, Any] = {}
 

@@ -17,7 +17,7 @@ from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
-from ..tools import shell_tool
+from ..tools import shell_tool, publish_event_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
@@ -123,6 +123,8 @@ class AgentService:
         tools = self.tool_registry.get_langchain_tools(selected_tool_ids)
         if "shell" in selected_tool_ids:
             tools = list(tools) + [shell_tool]
+        if "publish_event" in selected_tool_ids:
+            tools = list(tools) + [publish_event_tool]
 
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "
