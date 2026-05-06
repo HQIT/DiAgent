@@ -119,6 +119,8 @@ class TaskConfig(BaseModel):
 
     # 其他
     recursion_limit: int = Field(default=100, ge=1, description="Agent 递归/步数上限")
+    max_tool_rounds: Optional[int] = Field(default=None, ge=1, description="可选：工具调用轮次上限（预留字段）")
+    middleware_config: Optional[Dict[str, Any]] = Field(default=None, description="可选：中间件策略（预留字段）")
     task_user_id: Optional[str] = Field(
         default="task",
         description="任务模式下的虚拟 user_id，用于工作目录映射",

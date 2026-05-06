@@ -1,8 +1,9 @@
-# Agent 任务模式：只挂载一个 workspace 目录，配置与输出均在 workspace 内
-# workspace 内放: agent-task.json（或 agent-task.yaml）, skills/, mcp_servers.json, output/（写 log/result）
-# 启动: docker compose up -d
+# 两种运行模式：
+#   任务模式: docker compose up agent-task
+#   服务模式: docker compose up agent-service
 
 services:
+  # ---- 任务模式（一次性执行） ----
   agent-task:
     build:
       context: .
@@ -14,6 +15,29 @@ services:
       OUTPUT_DIR: /workspace/output
       TRIGGER_MODE: once
     volumes:
-      # 仅挂载一个 workspace，其中含配置、skills、mcp、输出目录
       - ./workspace:/workspace
     restart: "no"
+
+  # ---- 服务模式（常驻聊天/事件） ----
+  agent-service:
+    build:
+      context: .
+      dockerfile: docker/agent-service/Dockerfile
+    image: agent-service:v0.1.0
+    container_name: agent-service
+    ports:
+      - "8000:8000"
+    environment:
+      AGENT_WORKSPACE: /workspace
+      MCP_CONFIG_PATH: /workspace/mcp_servers.json
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-qwen2.5-14b}
+      LLM_MODELS_CONFIG_PATH: /workspace/models.yaml
+      SKILLS_DIR: skills
+    volumes:
+      - ./workspace:/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

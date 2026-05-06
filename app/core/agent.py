@@ -17,6 +17,7 @@ from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
+from ..tools import shell_tool, publish_event_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
@@ -42,10 +43,17 @@ def get_workspace_root() -> Path:
 def get_system_prompt() -> str:
     """生成动态系统提示词
     
-    Returns:
-        包含当前时间的系统提示词
+    如果设置了 AGENT_SYSTEM_PROMPT 环境变量，使用该值（附加当前时间）。
+    否则使用默认提示词。
     """
+    settings = get_settings()
     now = datetime.now()
+    if settings.agent_system_prompt:
+        current_time = now.strftime("%Y年%m月%d日 %H:%M:%S")
+        weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        weekday = weekday_names[now.weekday()]
+        return f"{settings.agent_system_prompt}\n\n当前时间：{current_time} {weekday}"
+    
     current_time = now.strftime("%Y年%m月%d日 %H:%M:%S")
     weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekday_names[now.weekday()]
@@ -110,11 +118,14 @@ class AgentService:
         # 1. 预处理请求
         processed = self.preprocessor.process(request)
         
-        # 2. 获取选择的工具（tool_ids 现在就是工具名称）
-        tools = self.tool_registry.get_langchain_tools(
-            processed.selected_tool_ids if processed.selected_tool_ids else None
-        )
-        
+        # 2. 获取选择的工具（空列表表示不启用工具；不再默认注入 shell）
+        selected_tool_ids = processed.selected_tool_ids or []
+        tools = self.tool_registry.get_langchain_tools(selected_tool_ids)
+        if "shell" in selected_tool_ids:
+            tools = list(tools) + [shell_tool]
+        if "publish_event" in selected_tool_ids:
+            tools = list(tools) + [publish_event_tool]
+
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "
                    f"tools={len(tools)}, "
@@ -157,9 +168,11 @@ class AgentService:
         """
         # 获取LLM
         llm = get_llm(processed.model, temperature=processed.temperature)
-        
-        # 转换消息为LangChain格式
-        lc_messages = self._to_langchain_messages(messages)
+
+        # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
+        # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
+        tool_system_prompt, tool_messages = self._split_system_prompt(messages)
+        lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
         
         if tools:
             # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
@@ -174,16 +187,17 @@ class AgentService:
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": tool_system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }
-            if self.middlewares:
-                agent_kwargs["middleware"] = self.middlewares
+            middlewares = self._resolve_middlewares(processed)
+            if middlewares:
+                agent_kwargs["middleware"] = middlewares
             
             agent = create_deep_agent(**agent_kwargs)
             
-            recursion_limit = get_settings().agent_recursion_limit
+            recursion_limit = self._resolve_recursion_limit(processed)
             config = {"recursion_limit": recursion_limit}
             result = await agent.ainvoke(
                 {"messages": lc_messages},
@@ -228,9 +242,11 @@ class AgentService:
         
         # 获取LLM
         llm = get_llm(processed.model, temperature=processed.temperature)
-        
-        # 转换消息
-        lc_messages = self._to_langchain_messages(messages)
+
+        # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
+        # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
+        tool_system_prompt, tool_messages = self._split_system_prompt(messages)
+        lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
         
         # 最终回答收集
         collected_content = []
@@ -254,12 +270,13 @@ class AgentService:
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": tool_system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }
-            if self.middlewares:
-                agent_kwargs["middleware"] = self.middlewares
+            middlewares = self._resolve_middlewares(processed)
+            if middlewares:
+                agent_kwargs["middleware"] = middlewares
             
             agent = create_deep_agent(**agent_kwargs)
             
@@ -267,7 +284,7 @@ class AgentService:
             current_mode = None
             pending_chunks = []
             
-            recursion_limit = get_settings().agent_recursion_limit
+            recursion_limit = self._resolve_recursion_limit(processed)
             config = {"recursion_limit": recursion_limit}
             try:
                 async for event in agent.astream_events(
@@ -405,7 +422,50 @@ class AgentService:
             elif msg.role == "assistant":
                 result.append(AIMessage(content=msg.content or ""))
         return result
-    
+
+    def _resolve_recursion_limit(self, processed: ProcessedRequest) -> int:
+        """优先使用请求中的 reasoning.recursion_limit，否则使用全局配置。"""
+        limit = get_settings().agent_recursion_limit
+        reasoning = (processed.custom_fields or {}).get("reasoning", {})
+        if isinstance(reasoning, dict):
+            val = reasoning.get("recursion_limit")
+            if isinstance(val, int) and val > 0:
+                return val
+            if isinstance(val, str) and val.isdigit() and int(val) > 0:
+                return int(val)
+        return limit
+
+    def _resolve_middlewares(self, processed: ProcessedRequest) -> List[AgentMiddleware]:
+        """按请求中的 middleware_config.enabled 过滤中间件。"""
+        default = list(self.middlewares or [])
+        cfg = processed.middleware_config or {}
+        enabled = cfg.get("enabled") if isinstance(cfg, dict) else None
+        if not enabled:
+            return default
+        enabled_set = {str(x).strip() for x in enabled if str(x).strip()}
+        if not enabled_set:
+            return default
+        filtered = [m for m in default if getattr(m, "__name__", "") in enabled_set]
+        return filtered
+
+    def _split_system_prompt(self, messages: List[ChatMessage]) -> tuple[str, List[ChatMessage]]:
+        """拆分 system prompt 与非 system 消息。
+
+        deepagents 会通过 `system_prompt` 管理系统提示，若同时把 system 放在
+        messages 里，会在部分 OpenAI 兼容网关（如 ECNU）触发多 system 问题。
+        """
+        system_parts: List[str] = []
+        rest: List[ChatMessage] = []
+        for msg in messages:
+            if msg.role == "system":
+                if msg.content:
+                    system_parts.append(msg.content)
+            else:
+                rest.append(msg)
+        if system_parts:
+            return "\n\n".join(system_parts), rest
+        return get_system_prompt(), rest
+
     def add_middleware(self, middleware: AgentMiddleware) -> None:
         """添加中间件
         

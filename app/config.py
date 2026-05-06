@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Agent 配置（LangGraph 递归上限）
     agent_recursion_limit: int = Field(default=100, alias="AGENT_RECURSION_LIMIT")
     
+    # Agent 系统提示词（可通过环境变量注入，覆盖默认提示词）
+    agent_system_prompt: Optional[str] = Field(default=None, alias="AGENT_SYSTEM_PROMPT")
+    
     # Agent 工作区根目录（backend 根、skills 所在目录；相对路径相对项目根解析，也可填绝对路径）
     agent_workspace: str = Field(default="workspace", alias="AGENT_WORKSPACE")
     
@@ -87,8 +90,7 @@ def get_models_config() -> Dict[str, Any]:
     config_path = Path(settings.llm_models_config_path)
     
     if not config_path.exists():
-        _models_config = {}
-        return _models_config
+        return {}
     
     with open(config_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
