@@ -86,6 +86,17 @@ class LLMFactory:
             api_key = model_config.get("api_key") or settings.llm_openai_api_key
             if api_key:
                 kwargs["api_key"] = api_key
+
+        # 透传部分供应商特定参数，例如 OpenAI 兼容接口的 extra_body。
+        if "extra_body" not in kwargs:
+            extra_body = model_config.get("extra_body")
+            if extra_body is not None:
+                kwargs["extra_body"] = extra_body
+
+        if "reasoning_effort" not in kwargs:
+            reasoning_effort = model_config.get("reasoning_effort")
+            if reasoning_effort is not None:
+                kwargs["reasoning_effort"] = reasoning_effort
         
         # 创建适配器
         adapter_class = cls.PROVIDERS[provider]
