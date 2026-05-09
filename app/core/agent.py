@@ -118,7 +118,7 @@ class AgentService:
         # 1. 预处理请求
         processed = self.preprocessor.process(request)
         
-        # 2. 获取选择的工具（空列表表示不启用工具；不再默认注入 shell）
+        # 2. 获取选择的工具（空列表表示不启用工具；工具启用由调用方/部署配置决定）
         selected_tool_ids = processed.selected_tool_ids or []
         tools = self.tool_registry.get_langchain_tools(selected_tool_ids)
         if "shell" in selected_tool_ids:
@@ -318,11 +318,13 @@ class AgentService:
                             if content:
                                 if current_mode == "reasoning":
                                     current_round_buffer.append(content)
-                                elif current_mode == "answering":
+                                else:
+                                    current_mode = "answering"
+                                    if not role_sent:
+                                        yield formatter._format_role_chunk()
+                                        role_sent = True
                                     collected_content.append(content)
                                     yield formatter._format_content_chunk(content)
-                                else:
-                                    pending_chunks.append(content)
                     
                     elif kind == "on_chat_model_end":
                         output = event.get("data", {}).get("output")

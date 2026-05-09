@@ -369,22 +369,6 @@ class ResponseFormatter:
         }
         return f"event: tool_call\ndata: {json.dumps(event_data, ensure_ascii=False)}\n\n"
     
-    def format_thinking_status(self, status: str) -> str:
-        """格式化思考状态（可选）
-        
-        Args:
-            status: 状态描述
-            
-        Returns:
-            SSE格式字符串
-        """
-        event_data = {
-            "type": "status",
-            "message": status,
-            "timestamp": time.time()
-        }
-        return f"event: status\ndata: {json.dumps(event_data, ensure_ascii=False)}\n\n"
-    
     def format_reasoning_chunk(self, content: str) -> str:
         """格式化推理过程块
         
