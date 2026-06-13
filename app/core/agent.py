@@ -17,7 +17,7 @@ from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
-from ..tools import shell_tool, publish_event_tool
+from ..tools import shell_tool, publish_event_tool, upload_file_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
