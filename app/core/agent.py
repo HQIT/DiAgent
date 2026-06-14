@@ -25,7 +25,6 @@ from ..config import get_settings
 
 # 项目根目录（app 所在仓库根，用于解析相对路径）
 _APP_ROOT = Path(__file__).parent.parent.parent.resolve()
-_APP_ROOT = Path(__file__).parent.parent.parent.resolve()
 
 
 def get_workspace_root() -> Path:
@@ -180,49 +179,52 @@ class AgentService:
 
         # 注入请求级上下文（供 upload_file 等 tool 隐式使用，不暴露给 LLM）
         cf = processed.custom_fields or {}
-        current_group_id.set(cf.get("group_id", ""))
-        current_bot_uid.set(cf.get("bot_uid", ""))
+        t_gid = current_group_id.set(cf.get("group_id", ""))
+        t_buid = current_bot_uid.set(cf.get("bot_uid", ""))
+        try:
+            if tools:
+                # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
+                workspace_root = get_workspace_root()
+                logger.info(f"[workspace_root] {workspace_root}")
+                backend = FilesystemBackend(
+                    root_dir=str(workspace_root),
+                    virtual_mode=False,
+                )
+                settings = get_settings()
+                skills_path = f"{workspace_root}/{settings.skills_dir}/"
+                agent_kwargs = {
+                    "model": llm.client,
+                    "tools": tools,
+                    "system_prompt": tool_system_prompt,
+                    "backend": backend,
+                    "skills": [skills_path],
+                }
+                middlewares = self._resolve_middlewares(processed)
+                if middlewares:
+                    agent_kwargs["middleware"] = middlewares
 
-        if tools:
-            # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
-            workspace_root = get_workspace_root()
-            logger.info(f"[workspace_root] {workspace_root}")
-            backend = FilesystemBackend(
-                root_dir=str(workspace_root),
-                virtual_mode=False,
-            )
-            settings = get_settings()
-            skills_path = f"{workspace_root}/{settings.skills_dir}/"
-            agent_kwargs = {
-                "model": llm.client,
-                "tools": tools,
-                "system_prompt": tool_system_prompt,
-                "backend": backend,
-                "skills": [skills_path],
-            }
-            middlewares = self._resolve_middlewares(processed)
-            if middlewares:
-                agent_kwargs["middleware"] = middlewares
-            
-            agent = create_deep_agent(**agent_kwargs)
-            
-            recursion_limit = self._resolve_recursion_limit(processed)
-            config = {"recursion_limit": recursion_limit}
-            result = await agent.ainvoke(
-                {"messages": lc_messages},
-                config=config
-            )
-            
-            # 提取最终响应
-            final_message = result.get("messages", [])[-1] if result.get("messages") else None
-            content = final_message.content if final_message else ""
-        else:
-            # 无工具，直接调用LLM
-            content = await llm.invoke(
-                [msg.model_dump(exclude_none=True) for msg in messages]
-            )
-        
-        return formatter.format_response(content)
+                agent = create_deep_agent(**agent_kwargs)
+
+                recursion_limit = self._resolve_recursion_limit(processed)
+                config = {"recursion_limit": recursion_limit}
+                result = await agent.ainvoke(
+                    {"messages": lc_messages},
+                    config=config
+                )
+
+                # 提取最终响应
+                final_message = result.get("messages", [])[-1] if result.get("messages") else None
+                content = final_message.content if final_message else ""
+            else:
+                # 无工具，直接调用LLM
+                content = await llm.invoke(
+                    [msg.model_dump(exclude_none=True) for msg in messages]
+                )
+
+            return formatter.format_response(content)
+        finally:
+            current_group_id.reset(t_gid)
+            current_bot_uid.reset(t_buid)
     
     async def _stream_chat(
         self,

@@ -18,6 +18,8 @@ from langchain_core.tools import tool
 
 _BRIDGE_URL = os.getenv("IM_BRIDGE_UPLOAD_URL", "http://im-bridge:8100/upload")
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
 # 请求级群聊上下文，由 agent.py 在每次请求时设置
 current_group_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "upload_group_id", default=""
@@ -54,6 +56,9 @@ def upload_file_tool(path: str) -> str:
             return f"[upload_file failed] not a regular file: {path}"
 
         data = file_path.read_bytes()
+        if len(data) > MAX_FILE_SIZE:
+            return f"[upload_file failed] file too large: {_format_size(len(data))} (max {_format_size(MAX_FILE_SIZE)})"
+
         content_type, _ = mimetypes.guess_type(file_path.name)
         if not content_type:
             content_type = "application/octet-stream"
