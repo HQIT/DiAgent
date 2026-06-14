@@ -18,11 +18,13 @@ from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
 from ..tools import shell_tool, publish_event_tool, upload_file_tool
+from ..tools.upload_file import current_group_id, current_bot_uid
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
 
 # 项目根目录（app 所在仓库根，用于解析相对路径）
+_APP_ROOT = Path(__file__).parent.parent.parent.resolve()
 _APP_ROOT = Path(__file__).parent.parent.parent.resolve()
 
 
@@ -125,6 +127,8 @@ class AgentService:
             tools = list(tools) + [shell_tool]
         if "publish_event" in selected_tool_ids:
             tools = list(tools) + [publish_event_tool]
+        if "upload_file" in selected_tool_ids:
+            tools = list(tools) + [upload_file_tool]
 
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "
@@ -173,7 +177,12 @@ class AgentService:
         # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
         tool_system_prompt, tool_messages = self._split_system_prompt(messages)
         lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
-        
+
+        # 注入请求级上下文（供 upload_file 等 tool 隐式使用，不暴露给 LLM）
+        cf = processed.custom_fields or {}
+        current_group_id.set(cf.get("group_id", ""))
+        current_bot_uid.set(cf.get("bot_uid", ""))
+
         if tools:
             # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
             workspace_root = get_workspace_root()
@@ -247,7 +256,12 @@ class AgentService:
         # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
         tool_system_prompt, tool_messages = self._split_system_prompt(messages)
         lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
-        
+
+        # 注入请求级上下文（供 upload_file 等 tool 隐式使用，不暴露给 LLM）
+        cf = processed.custom_fields or {}
+        current_group_id.set(cf.get("group_id", ""))
+        current_bot_uid.set(cf.get("bot_uid", ""))
+
         # 最终回答收集
         collected_content = []
         role_sent = False
