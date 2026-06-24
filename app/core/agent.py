@@ -1,5 +1,9 @@
 """Agent核心服务"""
 
+import contextvars
+import importlib.util
+import os
+import sys
 from pathlib import Path
 from typing import AsyncGenerator, Optional, List, Dict, Any, Union
 from dataclasses import dataclass
@@ -17,8 +21,7 @@ from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
-from ..tools import shell_tool, publish_event_tool, upload_file_tool
-from ..tools.upload_file import current_group_id, current_bot_uid
+from ..tools import shell_tool, publish_event_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
 from ..config import get_settings
@@ -77,6 +80,62 @@ def get_system_prompt() -> str:
 - 信息说清楚就行，不堆废话"""
 
 
+# 外部工具路径（由 DiOS 容器启动时通过环境变量注入，空串表示禁用）
+_EXTERNAL_TOOLS_PATH = os.getenv("EXTERNAL_TOOLS_PATH", "/workspace/tools")
+
+# 外部工具缓存（懒加载，首次请求时扫描目录）
+_external_tools_cache: tuple[dict, dict] | None = None
+
+
+def _discover_external_tools(tools_dir: str) -> tuple[dict, dict]:
+    """扫描外部工具目录，返回 (tools, ctx_vars)。
+
+    tools: {tool_name: tool_function}
+    ctx_vars: {key: ContextVar} — 合并所有模块的 CTX_VARS 声明
+    """
+    tools: dict[str, Any] = {}
+    ctx_vars: dict[str, contextvars.ContextVar] = {}
+    dir_path = Path(tools_dir)
+    if not tools_dir or not dir_path.is_dir():
+        return tools, ctx_vars
+
+    for py_file in sorted(dir_path.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        try:
+            module_name = f"_ext_tool_{py_file.stem}"
+            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            if not spec or not spec.loader:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            # 收集模块声明的 ContextVar（供 agent.py 自动从 custom_fields 注入）
+            module_ctx = getattr(module, "CTX_VARS", None)
+            if isinstance(module_ctx, dict):
+                ctx_vars.update(module_ctx)
+
+            # 收集 @tool 装饰的函数（StructuredTool 有 name+invoke，但不可 callable）
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if hasattr(attr, "name") and hasattr(attr, "invoke") and not attr_name.startswith("_"):
+                    tools[attr.name] = attr
+            logger.info(f"Loaded external tool module: {py_file.name} -> {list(tools.keys())}")
+        except Exception:
+            logger.warning(f"Failed to load external tool: {py_file}", exc_info=True)
+
+    return tools, ctx_vars
+
+
+def _get_external_tools() -> tuple[dict, dict]:
+    """懒加载外部工具，首次调用时扫描目录并缓存。"""
+    global _external_tools_cache
+    if _external_tools_cache is None:
+        _external_tools_cache = _discover_external_tools(_EXTERNAL_TOOLS_PATH)
+    return _external_tools_cache
+
+
 @dataclass
 class AgentContext:
     """Agent执行上下文"""
@@ -126,8 +185,11 @@ class AgentService:
             tools = list(tools) + [shell_tool]
         if "publish_event" in selected_tool_ids:
             tools = list(tools) + [publish_event_tool]
-        if "upload_file" in selected_tool_ids:
-            tools = list(tools) + [upload_file_tool]
+
+        # 加载外部工具（由 DiOS 挂载到 /workspace/tools，无需 tool_id 匹配）
+        ext_tools, ext_ctx = _get_external_tools()
+        if ext_tools:
+            tools = list(tools) + list(ext_tools.values())
 
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "
@@ -177,10 +239,12 @@ class AgentService:
         tool_system_prompt, tool_messages = self._split_system_prompt(messages)
         lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
 
-        # 注入请求级上下文（供 upload_file 等 tool 隐式使用，不暴露给 LLM）
+        # 注入请求级上下文（供外部 tool 隐式使用，不暴露给 LLM）
         cf = processed.custom_fields or {}
-        t_gid = current_group_id.set(cf.get("group_id", ""))
-        t_buid = current_bot_uid.set(cf.get("bot_uid", ""))
+        _, ext_ctx = _get_external_tools()
+        ctx_tokens: list[tuple[contextvars.ContextVar, contextvars.Token]] = []
+        for key, ctx_var in ext_ctx.items():
+            ctx_tokens.append((ctx_var, ctx_var.set(cf.get(key, ""))))
         try:
             if tools:
                 # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
@@ -223,8 +287,8 @@ class AgentService:
 
             return formatter.format_response(content)
         finally:
-            current_group_id.reset(t_gid)
-            current_bot_uid.reset(t_buid)
+            for ctx_var, token in ctx_tokens:
+                ctx_var.reset(token)
     
     async def _stream_chat(
         self,
@@ -259,10 +323,12 @@ class AgentService:
         tool_system_prompt, tool_messages = self._split_system_prompt(messages)
         lc_messages = self._to_langchain_messages(tool_messages if tools else messages)
 
-        # 注入请求级上下文（供 upload_file 等 tool 隐式使用，不暴露给 LLM）
+        # 注入请求级上下文（供外部 tool 隐式使用，不暴露给 LLM）
         cf = processed.custom_fields or {}
-        current_group_id.set(cf.get("group_id", ""))
-        current_bot_uid.set(cf.get("bot_uid", ""))
+        _, ext_ctx = _get_external_tools()
+        ctx_tokens: list[tuple[contextvars.ContextVar, contextvars.Token]] = []
+        for key, ctx_var in ext_ctx.items():
+            ctx_tokens.append((ctx_var, ctx_var.set(cf.get(key, ""))))
 
         # 最终回答收集
         collected_content = []
@@ -410,7 +476,8 @@ class AgentService:
                         current_round_buffer = []
                         pending_chunks = []
             finally:
-                pass
+                for ctx_var, token in ctx_tokens:
+                    ctx_var.reset(token)
                 
         else:
             # 无工具，直接流式调用LLM（全程真流式）
@@ -421,7 +488,9 @@ class AgentService:
             async for chunk in llm.stream(msg_dicts):
                 collected_content.append(chunk)
                 yield formatter._format_content_chunk(chunk)
-        
+            for ctx_var, token in ctx_tokens:
+                ctx_var.reset(token)
+
         # 发送结束标记
         yield formatter._format_finish_chunk()
         yield "data: [DONE]\n\n"
