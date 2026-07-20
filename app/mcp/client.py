@@ -95,16 +95,27 @@ class MCPClientManager:
     
     def get_available_tools(self) -> List[ToolInfo]:
         """获取所有可用工具信息（供前端展示）"""
-        return [
-            ToolInfo(
-                id=tool.name,
-                name=tool.name,
-                description=tool.description or "",
-                server="mcp",
-                parameters=tool.args_schema.model_json_schema() if tool.args_schema else {}
+        tools_info = []
+        for tool in self._tools:
+            params: Any = {}
+            schema = getattr(tool, "args_schema", None)
+            if schema is not None:
+                if isinstance(schema, dict):
+                    params = schema
+                elif hasattr(schema, "model_json_schema"):
+                    params = schema.model_json_schema()
+                elif hasattr(schema, "schema"):
+                    params = schema.schema()
+            tools_info.append(
+                ToolInfo(
+                    id=tool.name,
+                    name=tool.name,
+                    description=tool.description or "",
+                    server="mcp",
+                    parameters=params,
+                )
             )
-            for tool in self._tools
-        ]
+        return tools_info
     
     @property
     def is_connected(self) -> bool:

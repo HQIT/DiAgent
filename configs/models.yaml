@@ -1,0 +1,3 @@
+# 框架默认占位：具体应用请通过 LLM_MODELS_CONFIG_PATH 指向应用自己的 models.yaml
+# api_key 使用环境变量 LLM_OPENAI_API_KEY
+models: {}
