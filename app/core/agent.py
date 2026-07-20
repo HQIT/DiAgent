@@ -19,6 +19,7 @@ from ..mcp.tool_registry import ToolRegistry
 from ..middleware.custom_middlewares import get_logging_middlewares
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
+from .context_compact import compact_messages, resolve_compact_options
 from ..config import get_settings
 
 # 项目根目录（app 所在仓库根，用于解析相对路径）
@@ -109,6 +110,20 @@ class AgentService:
         
         # 1. 预处理请求
         processed = self.preprocessor.process(request)
+
+        # 1b. 通用上下文压缩（framework；业务摘要由 Application 注入）
+        compact_opts = resolve_compact_options(
+            get_settings(), processed.custom_fields
+        )
+        compacted, compact_meta = compact_messages(
+            processed.messages, **compact_opts
+        )
+        processed.messages = compacted
+        if compact_meta:
+            processed.custom_fields = {
+                **(processed.custom_fields or {}),
+                "_context_compact": compact_meta,
+            }
         
         # 2. 获取选择的工具（tool_ids 现在就是工具名称）
         tools = self.tool_registry.get_langchain_tools(
@@ -171,10 +186,14 @@ class AgentService:
             )
             settings = get_settings()
             skills_path = f"{workspace_root}/{settings.skills_dir}/"
+            system_prompt = (
+                (processed.custom_fields or {}).get("system_prompt")
+                or get_system_prompt()
+            )
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }
@@ -251,10 +270,14 @@ class AgentService:
             )
             settings = get_settings()
             skills_path = f"{workspace_root}/{settings.skills_dir}/"
+            system_prompt = (
+                (processed.custom_fields or {}).get("system_prompt")
+                or get_system_prompt()
+            )
             agent_kwargs = {
                 "model": llm.client,
                 "tools": tools,
-                "system_prompt": get_system_prompt(),
+                "system_prompt": system_prompt,
                 "backend": backend,
                 "skills": [skills_path],
             }

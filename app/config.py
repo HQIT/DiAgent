@@ -28,6 +28,21 @@ class Settings(BaseSettings):
     # 会话配置
     session_ttl: int = Field(default=3600 * 24, alias="SESSION_TTL")
     max_history_messages: int = Field(default=50, alias="MAX_HISTORY_MESSAGES")
+
+    # 通用上下文压缩（extractive；可由 custom_fields.context_compact 覆盖）
+    context_compact_enabled: bool = Field(default=True, alias="CONTEXT_COMPACT_ENABLED")
+    context_compact_max_messages: int = Field(
+        default=20, alias="CONTEXT_COMPACT_MAX_MESSAGES"
+    )
+    context_compact_keep_recent: int = Field(
+        default=8, alias="CONTEXT_COMPACT_KEEP_RECENT"
+    )
+    context_compact_max_chars: int = Field(
+        default=24000, alias="CONTEXT_COMPACT_MAX_CHARS"
+    )
+    context_compact_max_summary_chars: int = Field(
+        default=4000, alias="CONTEXT_COMPACT_MAX_SUMMARY_CHARS"
+    )
     
     # LLM 配置
     llm_default_model: str = Field(default="qwen2.5-14b", alias="LLM_DEFAULT_MODEL")
