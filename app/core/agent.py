@@ -118,13 +118,16 @@ class AgentService:
         # 1. 预处理请求
         processed = self.preprocessor.process(request)
         
-        # 2. 获取选择的工具（空列表表示不启用工具；工具启用由调用方/部署配置决定）
-        selected_tool_ids = processed.selected_tool_ids or []
-        tools = self.tool_registry.get_langchain_tools(selected_tool_ids)
-        if "shell" in selected_tool_ids:
-            tools = list(tools) + [shell_tool]
-        if "publish_event" in selected_tool_ids:
-            tools = list(tools) + [publish_event_tool]
+        # 2. 工具选择：None=全部 MCP；[]=无工具；非空=按名过滤 + 具名内置
+        selected_tool_ids = processed.selected_tool_ids
+        if selected_tool_ids is None:
+            tools = list(self.tool_registry.get_langchain_tools(None))
+        else:
+            tools = list(self.tool_registry.get_langchain_tools(selected_tool_ids))
+            if "shell" in selected_tool_ids:
+                tools = tools + [shell_tool]
+            if "publish_event" in selected_tool_ids:
+                tools = tools + [publish_event_tool]
 
         logger.info(f"处理请求: model={processed.model}, "
                    f"messages={len(processed.messages)}, "

@@ -47,7 +47,10 @@ class ExtendedChatRequest(BaseModel):
     
     tool_selection: Optional[ToolSelection] = Field(
         None,
-        description="前端选择的工具配置"
+        description=(
+            "工具选择：省略/null=启用全部已连接 MCP；"
+            "显式 tool_ids=[]=无工具；非空=按名过滤 MCP 并附加 shell/publish_event 等内置工具"
+        ),
     )
     
     middleware_config: Optional[MiddlewareConfig] = Field(
@@ -79,8 +82,14 @@ class ExtendedChatRequest(BaseModel):
             "stop": self.stop,
         }
     
-    def get_selected_tool_ids(self) -> List[str]:
-        """获取选择的工具ID列表"""
-        if self.tool_selection:
-            return self.tool_selection.tool_ids
-        return []
+    def get_selected_tool_ids(self) -> Optional[List[str]]:
+        """获取选择的工具ID列表。
+
+        契约：
+        - 未传 tool_selection（None）→ 返回 None，表示启用全部已连接 MCP 工具
+        - 显式 tool_ids=[] → 返回 []，表示不启用任何工具
+        - 显式 tool_ids=["shell", ...] → 按名过滤 MCP 并附加具名内置工具
+        """
+        if self.tool_selection is None:
+            return None
+        return self.tool_selection.tool_ids

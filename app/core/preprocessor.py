@@ -20,7 +20,8 @@ class ProcessedRequest:
     # 从扩展字段提取
     session_id: Optional[str] = None
     user_id: Optional[str] = None
-    selected_tool_ids: List[str] = field(default_factory=list)
+    # None = 全部 MCP；[] = 无工具；非空 = 按名过滤
+    selected_tool_ids: Optional[List[str]] = None
     user_context: Dict[str, Any] = field(default_factory=dict)
     custom_fields: Dict[str, Any] = field(default_factory=dict)
     middleware_config: Dict[str, Any] = field(default_factory=dict)
@@ -73,8 +74,9 @@ class RequestPreprocessor:
             middleware_config=middleware_config
         )
         
+        tool_n = "all_mcp" if selected_tool_ids is None else len(selected_tool_ids)
         logger.debug(f"预处理完成: model={processed.model}, "
-                    f"tools={len(selected_tool_ids)}, "
+                    f"tools={tool_n}, "
                     f"session={processed.session_id}")
         
         return processed
