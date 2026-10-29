@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     skills_dir: str = Field(default="skills", alias="SKILLS_DIR")
     skills_max_file_size: int = Field(default=1024 * 1024, alias="SKILLS_MAX_FILE_SIZE")  # 1MB
 
+    # 工具错误语义：False（默认）时业务失败向上抛，仅瞬态错误返回可重试文本；
+    # True 时恢复旧行为（全部转字符串返回，不中断）
+    tool_error_swallow: bool = Field(default=False, alias="TOOL_ERROR_SWALLOW")
+
     @computed_field
     @property
     def redis_url(self) -> str:
