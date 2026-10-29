@@ -17,7 +17,7 @@ from ..core.agent import get_system_prompt
 from ..llm import get_llm
 from ..mcp.client import MCPClientManager
 from ..mcp.tool_registry import ToolRegistry, wrap_tool_with_fallback, wrap_tools_with_fallback
-from ..middleware.custom_middlewares import get_logging_middlewares
+from ..middleware.custom_middlewares import get_logging_middlewares, filter_middlewares_by_config
 from ..tools import shell_tool, publish_event_tool
 
 from .config_schema import TaskConfig, SubagentSpec
@@ -206,9 +206,7 @@ class TaskRunner:
         backend = FilesystemBackend(root_dir=str(workspace_root), virtual_mode=False)
         middlewares = list(get_logging_middlewares())
         enabled_middlewares = (self.config.middleware_config or {}).get("enabled") if self.config.middleware_config else None
-        if enabled_middlewares:
-            enabled_set = {str(x).strip() for x in enabled_middlewares if str(x).strip()}
-            middlewares = [m for m in middlewares if getattr(m, "__name__", "") in enabled_set]
+        middlewares = filter_middlewares_by_config(middlewares, enabled_middlewares)
 
         # Subagents（转为 deepagents 期望的 dict；支持单独 mcp_config_path、skills_dir、skill_names）
         subagents_list: Optional[List[dict]] = None

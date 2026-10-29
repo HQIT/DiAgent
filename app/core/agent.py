@@ -16,7 +16,7 @@ from ..schemas.openai_types import ChatCompletionResponse, ChatMessage
 from ..llm import get_llm, BaseLLMAdapter
 from ..mcp.client import MCPClientManager, get_mcp_client
 from ..mcp.tool_registry import ToolRegistry
-from ..middleware.custom_middlewares import get_logging_middlewares
+from ..middleware.custom_middlewares import get_logging_middlewares, filter_middlewares_by_config
 from ..tools import shell_tool, publish_event_tool
 from .preprocessor import RequestPreprocessor, ProcessedRequest
 from .response_formatter import ResponseFormatter
@@ -437,16 +437,9 @@ class AgentService:
 
     def _resolve_middlewares(self, processed: ProcessedRequest) -> List[AgentMiddleware]:
         """按请求中的 middleware_config.enabled 过滤中间件。"""
-        default = list(self.middlewares or [])
         cfg = processed.middleware_config or {}
         enabled = cfg.get("enabled") if isinstance(cfg, dict) else None
-        if not enabled:
-            return default
-        enabled_set = {str(x).strip() for x in enabled if str(x).strip()}
-        if not enabled_set:
-            return default
-        filtered = [m for m in default if getattr(m, "__name__", "") in enabled_set]
-        return filtered
+        return filter_middlewares_by_config(self.middlewares or [], enabled)
 
     def _split_system_prompt(self, messages: List[ChatMessage]) -> tuple[str, List[ChatMessage]]:
         """拆分 system prompt 与非 system 消息。

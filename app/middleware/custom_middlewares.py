@@ -122,9 +122,56 @@ async def merge_system_messages(request: ModelRequest, handler) -> ModelResponse
     return await handler(new_req)
 
 
+# 装饰器中间件没有 __name__，过滤标识一律走显式注册名
+REQUIRED_MIDDLEWARES: set = set()
+
+
+def _named(middleware, name: str, required: bool = False):
+    middleware.middleware_name = name
+    if required:
+        REQUIRED_MIDDLEWARES.add(name)
+    return middleware
+
+
+def middleware_name(m) -> Optional[str]:
+    """解析中间件的过滤标识：优先注册名，兜底 __name__ / 类名（自定义中间件）。"""
+    name = getattr(m, "middleware_name", None)
+    if name:
+        return name
+    return getattr(m, "__name__", None) or type(m).__name__
+
+
+def filter_middlewares_by_config(middlewares: List, enabled_names: Optional[List[str]]) -> List:
+    """按用户配置的 enabled 列表过滤中间件。
+
+    - enabled 为空 / None：全部保留（默认行为，与不传 middleware_config 一致）
+    - required 中间件（网关兼容层）始终保留；用户显式未勾选时打 WARN，不静默移除
+    - 其余中间件按名字勾选保留
+    """
+    if not enabled_names:
+        return list(middlewares)
+    enabled_set = {str(x).strip() for x in enabled_names if str(x).strip()}
+    if not enabled_set:
+        return list(middlewares)
+    kept = []
+    for m in middlewares:
+        name = middleware_name(m)
+        if name in REQUIRED_MIDDLEWARES:
+            if name not in enabled_set:
+                logger.warning(f"中间件 {name} 是必需兼容层，配置未勾选但仍保留")
+            kept.append(m)
+        elif name in enabled_set:
+            kept.append(m)
+    return kept
+
+
 # ============================================================
 # 组合中间件列表 - 供外部使用
 # ============================================================
+
+log_before_model = _named(log_before_model, "log_before_model")
+log_after_model = _named(log_after_model, "log_after_model")
+merge_system_messages = _named(merge_system_messages, "merge_system_messages", required=True)
 
 logging_middlewares = [
     log_before_model,
