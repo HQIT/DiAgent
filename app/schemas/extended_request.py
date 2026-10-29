@@ -54,6 +54,12 @@ class ExtendedChatRequest(BaseModel):
         None,
         description="中间件配置"
     )
+
+    subagents: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="子 agent 列表，每项为 deepagents SubAgent 格式的 dict"
+                   "（name / description / system_prompt / tools / model 等）"
+    )
     
     # 用户上下文
     user_context: Optional[Dict[str, Any]] = Field(
