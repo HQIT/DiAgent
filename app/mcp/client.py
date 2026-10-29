@@ -30,34 +30,51 @@ class MCPClientManager:
         self._client: Optional[MultiServerMCPClient] = None
         self._tools: List[BaseTool] = []
         self._connected = False
+        # 每个 server 的连接状态：{"name": {"status": "ok"|"failed", "tools": n, "error": str}}
+        self.server_status: Dict[str, Dict[str, Any]] = {}
     
-    async def connect_all(self) -> None:
-        """连接所有MCP服务器"""
+    async def connect_all(self) -> Dict[str, Dict[str, Any]]:
+        """逐个连接 MCP 服务器，单个失败不影响其余。
+
+        返回每个 server 的连接状态；全部失败也不抛异常。
+        """
         if self._connected:
-            return
-        
-        # 加载配置
+            return self.server_status
+
         server_configs = self._load_config()
-        
+
         if not server_configs:
             logger.warning("没有配置任何MCP服务器")
             self._connected = True
-            return
-        
-        try:
-            # 创建 MultiServerMCPClient 并获取工具
-            self._client = MultiServerMCPClient(server_configs)
-            self._tools = await self._client.get_tools()
-            
-            self._connected = True
-            logger.info(f"MCP客户端已连接，共 {len(self._tools)} 个工具可用")
-            
-            for tool in self._tools:
-                logger.debug(f"  - {tool.name}: {tool.description[:50] if tool.description else 'No description'}...")
-                
-        except Exception as e:
-            logger.error(f"连接MCP服务器失败: {e}")
-            raise
+            return self.server_status
+
+        self._client = MultiServerMCPClient(server_configs)
+        tools: List[BaseTool] = []
+        status: Dict[str, Dict[str, Any]] = {}
+
+        # 逐 server 连接：库的 get_tools() 内部是 asyncio.gather 不隔离异常，
+        # 一个坏 server 会让整批失败，因此按 server_name 分别调用
+        for name in server_configs:
+            try:
+                server_tools = await self._client.get_tools(server_name=name)
+            except Exception as e:
+                status[name] = {"status": "failed", "tools": 0, "error": f"{type(e).__name__}: {e}"}
+                logger.error(f"mcp: server={name} status=failed error={type(e).__name__}: {e}")
+            else:
+                status[name] = {"status": "ok", "tools": len(server_tools)}
+                logger.info(f"mcp: server={name} status=ok tools={len(server_tools)}")
+                tools.extend(server_tools)
+
+        self._tools = tools
+        self._connected = True
+        self.server_status = status
+
+        ok_count = sum(1 for v in status.values() if v["status"] == "ok")
+        if ok_count:
+            logger.info(f"MCP客户端已连接，{ok_count}/{len(status)} 个 server 可用，共 {len(tools)} 个工具")
+        else:
+            logger.error(f"MCP: 全部 {len(status)} 个 server 连接失败，无 MCP 工具可用")
+        return status
     
     def _load_config(self) -> Dict[str, Any]:
         """加载MCP配置：优先使用内联 server_configs，否则从 config_path 文件读取。"""
@@ -81,6 +98,7 @@ class MCPClientManager:
         self._client = None
         self._tools = []
         self._connected = False
+        self.server_status = {}
         logger.info("MCP客户端已断开")
     
     def get_tools(self) -> List[BaseTool]:
