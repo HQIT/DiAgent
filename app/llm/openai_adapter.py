@@ -9,7 +9,9 @@ from .base import BaseLLMAdapter
 
 class OpenAIAdapter(BaseLLMAdapter):
     """OpenAI适配器"""
-    
+
+    SUPPORTED_PARAMS = ("temperature", "top_p", "max_tokens", "stop")
+
     def __init__(
         self, 
         model_name: str, 

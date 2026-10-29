@@ -12,7 +12,9 @@ class OllamaAdapter(BaseLLMAdapter):
     
     base_url 从 settings.llm.ollama_base_url 获取（通过 factory）
     """
-    
+
+    SUPPORTED_PARAMS = ("temperature", "top_p", "max_tokens", "stop")
+
     def __init__(
         self, 
         model_name: str, 
@@ -26,10 +28,14 @@ class OllamaAdapter(BaseLLMAdapter):
     @property
     def client(self) -> BaseChatModel:
         if self._client is None:
+            client_kwargs = dict(self.kwargs)
+            if "max_tokens" in client_kwargs:
+                # ChatOllama 无 max_tokens，对应参数为 num_predict
+                client_kwargs["num_predict"] = client_kwargs.pop("max_tokens")
             self._client = ChatOllama(
                 model=self.model_name,
                 base_url=self.base_url,
-                **self.kwargs
+                **client_kwargs
             )
             object.__setattr__(self._client, "model_provider", "ollama")
         return self._client

@@ -16,6 +16,8 @@ class ProcessedRequest:
     temperature: float
     max_tokens: Optional[int]
     stream: bool
+    top_p: Optional[float] = None
+    stop: Optional[List[str]] = None
     
     # 从扩展字段提取
     session_id: Optional[str] = None
@@ -62,9 +64,11 @@ class RequestPreprocessor:
         processed = ProcessedRequest(
             model=request.model,
             messages=request.messages,
-            temperature=request.temperature or 0.7,
+            temperature=0.7 if request.temperature is None else request.temperature,
             max_tokens=request.max_tokens,
             stream=request.stream or False,
+            top_p=request.top_p if "top_p" in request.model_fields_set else None,
+            stop=list(request.stop) if request.stop else None,
             session_id=request.session_id,
             user_id=user_id,
             selected_tool_ids=selected_tool_ids,

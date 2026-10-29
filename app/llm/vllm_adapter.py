@@ -14,7 +14,9 @@ class VLLMAdapter(BaseLLMAdapter):
     
     base_url 从 settings.llm.vllm_base_url 获取（通过 factory）
     """
-    
+
+    SUPPORTED_PARAMS = ("temperature", "top_p", "max_tokens", "stop")
+
     def __init__(
         self, 
         model_name: str, 
