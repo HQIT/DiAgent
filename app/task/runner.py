@@ -277,8 +277,6 @@ class TaskRunner:
 
         agent = create_deep_agent(**agent_kwargs)
         run_config = {"recursion_limit": self.config.recursion_limit}
-        if self.config.max_tool_rounds is not None:
-            run_config["max_tool_rounds"] = int(self.config.max_tool_rounds)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         result: Dict[str, Any] = {}
 
