@@ -12,9 +12,12 @@ class BaseLLMAdapter(ABC):
     统一不同LLM提供商的接口
     """
     
+    # 请求级参数白名单：不在名单内的参数不透传，避免兼容网关 400
+    SUPPORTED_PARAMS: tuple = ("temperature",)
+
     def __init__(self, model_name: str, **kwargs):
         self.model_name = model_name
-        self.kwargs = kwargs
+        self.kwargs = {k: v for k, v in kwargs.items() if k in self.SUPPORTED_PARAMS}
         self._client: Optional[BaseChatModel] = None
     
     @property

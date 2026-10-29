@@ -167,7 +167,7 @@ class AgentService:
             聊天响应
         """
         # 获取LLM
-        llm = get_llm(processed.model, temperature=processed.temperature)
+        llm = self._get_llm(processed)
 
         # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
         # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
@@ -241,7 +241,7 @@ class AgentService:
         import uuid
         
         # 获取LLM
-        llm = get_llm(processed.model, temperature=processed.temperature)
+        llm = self._get_llm(processed)
 
         # deepagents 模式下，system prompt 通过 system_prompt 字段传入；
         # 输入 messages 中不再保留 system，避免 ECNU 侧出现多 system。
@@ -411,6 +411,17 @@ class AgentService:
         yield "data: [DONE]\n\n"
         
     
+    def _get_llm(self, processed: ProcessedRequest) -> BaseLLMAdapter:
+        """按请求参数构造 LLM（非流式/流式共用）。"""
+        params: Dict[str, Any] = {"temperature": processed.temperature}
+        if processed.max_tokens is not None:
+            params["max_tokens"] = processed.max_tokens
+        if processed.top_p is not None:
+            params["top_p"] = processed.top_p
+        if processed.stop:
+            params["stop"] = processed.stop
+        return get_llm(processed.model, **params)
+
     def _to_langchain_messages(self, messages: List[ChatMessage]) -> List:
         """转换为LangChain消息格式"""
         result = []
