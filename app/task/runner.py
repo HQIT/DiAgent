@@ -3,17 +3,17 @@
 import json
 import re
 import uuid
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
 from loguru import logger
 
-from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
-
 from ..config import get_settings
 from ..core.agent import get_system_prompt
+from ..core.builder import AgentProfile, build_agent
+from ..core.checkpoint import sanitize_thread_id, sqlite_task_saver
 from ..llm import get_llm
 from ..mcp.client import MCPClientManager
 from ..mcp.tool_registry import ToolRegistry, wrap_tool_with_fallback, wrap_tools_with_fallback
@@ -203,7 +203,6 @@ class TaskRunner:
         else:
             skills_paths = [f"{workspace_root}/{self.config.skills_dir}/"]
 
-        backend = FilesystemBackend(root_dir=str(workspace_root), virtual_mode=False)
         middlewares = list(get_logging_middlewares())
         enabled_middlewares = (self.config.middleware_config or {}).get("enabled") if self.config.middleware_config else None
         if enabled_middlewares:
@@ -264,25 +263,33 @@ class TaskRunner:
             rel_output = run_output_dir
         output_dir_hint = f"\n\n【本次任务产出目录】所有产出文件（含子 agent 生成的草稿、报告等）请统一写入此目录。绝对路径：{run_output_dir}；相对 workspace：{rel_output}（write 等工具请使用此相对路径）。委托子 agent 时请说明该路径，确保文件都写在此目录下。"
         system_prompt = (self.config.system_prompt if self.config.system_prompt else get_system_prompt()).rstrip() + output_dir_hint
-        agent_kwargs: dict = {
-            "model": llm.client,
-            "tools": tools,
-            "system_prompt": system_prompt,
-            "backend": backend,
-            "skills": skills_paths,
-            "middleware": middlewares,
-        }
-        if subagents_list is not None:
-            agent_kwargs["subagents"] = subagents_list
-
-        agent = create_deep_agent(**agent_kwargs)
-        run_config = {"recursion_limit": self.config.recursion_limit}
-        if self.config.max_tool_rounds is not None:
-            run_config["max_tool_rounds"] = int(self.config.max_tool_rounds)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        result: Dict[str, Any] = {}
-
+        checkpoint_stack = AsyncExitStack()
+        saver: Optional[Any] = None
+        if self.config.thread_id:
+            saver = await checkpoint_stack.enter_async_context(
+                sqlite_task_saver(workspace_root, self.config.thread_id)
+            )
         try:
+            profile = AgentProfile(
+                model=llm.client,
+                tools=tools,
+                system_prompt=system_prompt,
+                workspace_root=workspace_root,
+                skills_paths=skills_paths,
+                subagents=subagents_list,
+                middlewares=middlewares,
+                checkpointer=saver,
+            )
+
+            agent = build_agent(profile)
+            run_config: Dict[str, Any] = {"recursion_limit": self.config.recursion_limit}
+            if self.config.thread_id:
+                run_config["configurable"] = {"thread_id": sanitize_thread_id(self.config.thread_id)}
+            if self.config.max_tool_rounds is not None:
+                run_config["max_tool_rounds"] = int(self.config.max_tool_rounds)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            result: Dict[str, Any] = {}
+
             try:
                 input_messages = [HumanMessage(content=self.config.task)]
                 try:
@@ -331,7 +338,7 @@ class TaskRunner:
                     log_path.parent.mkdir(parents=True, exist_ok=True)
                     log_path.write_text("\n".join(_messages_to_log_lines(messages)), encoding="utf-8")
             finally:
-                pass
+                await checkpoint_stack.aclose()
 
             logger.info("已写入 log: {}", log_path)
             messages = result.get("messages", [])
