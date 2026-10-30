@@ -6,8 +6,8 @@ langgraph>=0.4.0
 deepagents>=0.4.0
 
 # MCP
-mcp>=1.0.0
-langchain-mcp-adapters>=0.1.0
+mcp>=1.24,<2.0
+langchain-mcp-adapters>=0.3.1,<0.4
 
 # Web Framework
 fastapi>=0.115.0
