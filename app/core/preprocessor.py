@@ -24,6 +24,7 @@ class ProcessedRequest:
     user_context: Dict[str, Any] = field(default_factory=dict)
     custom_fields: Dict[str, Any] = field(default_factory=dict)
     middleware_config: Dict[str, Any] = field(default_factory=dict)
+    subagents: Optional[List[Dict[str, Any]]] = None
 
 
 class RequestPreprocessor:
@@ -70,7 +71,8 @@ class RequestPreprocessor:
             selected_tool_ids=selected_tool_ids,
             user_context=request.user_context or {},
             custom_fields=request.custom_fields or {},
-            middleware_config=middleware_config
+            middleware_config=middleware_config,
+            subagents=request.subagents
         )
         
         logger.debug(f"预处理完成: model={processed.model}, "

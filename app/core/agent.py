@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from loguru import logger
 
-from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
+from .builder import AgentProfile, build_agent
 from ..schemas.extended_request import ExtendedChatRequest
 from ..schemas.openai_types import ChatCompletionResponse, ChatMessage
 from ..llm import get_llm, BaseLLMAdapter
@@ -176,27 +175,9 @@ class AgentService:
         
         if tools:
             # 使用 deepagents 的 create_deep_agent（规划、文件系统、子agent等能力）
-            workspace_root = get_workspace_root()
-            logger.info(f"[workspace_root] {workspace_root}")
-            backend = FilesystemBackend(
-                root_dir=str(workspace_root),
-                virtual_mode=False,
-            )
-            settings = get_settings()
-            skills_path = f"{workspace_root}/{settings.skills_dir}/"
-            agent_kwargs = {
-                "model": llm.client,
-                "tools": tools,
-                "system_prompt": tool_system_prompt,
-                "backend": backend,
-                "skills": [skills_path],
-            }
-            middlewares = self._resolve_middlewares(processed)
-            if middlewares:
-                agent_kwargs["middleware"] = middlewares
-            
-            agent = create_deep_agent(**agent_kwargs)
-            
+            profile = self._agent_profile(processed, tools, tool_system_prompt, llm)
+            agent = build_agent(profile)
+
             recursion_limit = self._resolve_recursion_limit(processed)
             config = {"recursion_limit": recursion_limit}
             result = await agent.ainvoke(
@@ -259,27 +240,9 @@ class AgentService:
         
         if tools:
             # 使用 deepagents 的 create_deep_agent（支持流式输出）
-            workspace_root = get_workspace_root()
-            logger.info(f"[workspace_root] {workspace_root}")
-            backend = FilesystemBackend(
-                root_dir=str(workspace_root),
-                virtual_mode=False,
-            )
-            settings = get_settings()
-            skills_path = f"{workspace_root}/{settings.skills_dir}/"
-            agent_kwargs = {
-                "model": llm.client,
-                "tools": tools,
-                "system_prompt": tool_system_prompt,
-                "backend": backend,
-                "skills": [skills_path],
-            }
-            middlewares = self._resolve_middlewares(processed)
-            if middlewares:
-                agent_kwargs["middleware"] = middlewares
-            
-            agent = create_deep_agent(**agent_kwargs)
-            
+            profile = self._agent_profile(processed, tools, tool_system_prompt, llm)
+            agent = build_agent(profile)
+
             # 使用astream_events获取流式输出
             current_mode = None
             pending_chunks = []
@@ -434,6 +397,27 @@ class AgentService:
             if isinstance(val, str) and val.isdigit() and int(val) > 0:
                 return int(val)
         return limit
+
+    def _agent_profile(
+        self,
+        processed: ProcessedRequest,
+        tools: List[Any],
+        system_prompt: str,
+        llm: BaseLLMAdapter,
+    ) -> AgentProfile:
+        workspace_root = get_workspace_root()
+        logger.info(f"[workspace_root] {workspace_root}")
+        settings = get_settings()
+        skills_path = f"{workspace_root}/{settings.skills_dir}/"
+        return AgentProfile(
+            model=llm.client,
+            tools=tools,
+            system_prompt=system_prompt,
+            workspace_root=workspace_root,
+            skills_paths=[skills_path],
+            subagents=processed.subagents,
+            middlewares=self._resolve_middlewares(processed),
+        )
 
     def _resolve_middlewares(self, processed: ProcessedRequest) -> List[AgentMiddleware]:
         """按请求中的 middleware_config.enabled 过滤中间件。"""
