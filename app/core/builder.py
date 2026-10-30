@@ -24,6 +24,7 @@ class AgentProfile:
     skills_paths: List[str] = field(default_factory=list)
     subagents: Optional[List[Dict[str, Any]]] = None
     middlewares: List[AgentMiddleware] = field(default_factory=list)
+    checkpointer: Optional[Any] = None
 
     def to_kwargs(self) -> Dict[str, Any]:
         kwargs: Dict[str, Any] = {
@@ -40,6 +41,8 @@ class AgentProfile:
             kwargs["middleware"] = self.middlewares
         if self.subagents is not None:
             kwargs["subagents"] = self.subagents
+        if self.checkpointer is not None:
+            kwargs["checkpointer"] = self.checkpointer
         return kwargs
 
 
