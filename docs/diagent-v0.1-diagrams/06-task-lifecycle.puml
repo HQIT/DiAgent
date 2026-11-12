@@ -1,0 +1,47 @@
+@startuml
+title 06  一次性任务 · 执行状态与退出
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+hide empty description
+skinparam state {
+    BackgroundColor #EAF2FF
+    BorderColor #7595B4
+    FontColor #14273E
+}
+state "启动 / 读配置" as Start
+state "SDK 初始化" as Boot
+state "运行 Agent" as Running
+state "保存结果" as Persist
+state "关闭 DSH" as Close
+state "退出 0" as Ok #DDF2E9
+state "非零退出" as Failed #FBECEC
+
+[*] --> Start : DiOS 启动 task 容器
+Start --> Boot : 配置通过
+Start --> Failed : 缺失或非法配置
+Boot --> Running : 初始化完成
+Boot --> Close : 初始化失败或收到停止信号
+Running --> Persist : 确认任务完成
+Running --> Close : 失败、超时或收到停止信号
+Persist --> Close : 记录产物落盘结果
+Close --> Ok : 执行成功且产物已写入
+Close --> Failed : 失败 / 中断或产物写入失败
+Ok --> [*]
+Failed --> [*]
+
+note right of Running
+  DiAgent 负责 SDK 子进程收尾。
+  DiOS 当前 A2A 取消更新业务状态，
+  容器停止仍需从 DiOS 接到实际句柄。
+end note
+@enduml

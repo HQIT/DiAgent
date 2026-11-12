@@ -1,0 +1,63 @@
+@startuml
+title 03  一次性任务 · 配置、模型、工具和产物
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+skinparam sequence {
+    ParticipantBackgroundColor #EAF2FF
+    ParticipantBorderColor #7595B4
+    LifeLineBorderColor #94A9BF
+    GroupBackgroundColor #EDF6F3
+    GroupBorderColor #8EADA2
+    ReferenceBackgroundColor #EDF6F3
+    ReferenceBorderColor #8EADA2
+}
+hide footbox
+actor "事件 / A2A" as Caller
+participant "DiOS" as OS
+participant "Docker Engine" as Docker
+participant "TS Task 入口" as Task
+participant "配置 + DSH 运行模块" as Run
+participant "DSH 子进程" as DSH
+database "/workspace" as WS
+participant "模型 / MCP 网关" as External
+
+Caller -> OS : 触发一次任务
+OS -> WS : 写任务 JSON 与必要的 MCP 配置
+OS -> Docker : 选 task 镜像，挂载工作区，启动
+Docker -> Task : 传入 TASK_CONFIG
+Task -> Run : 解析模型、角色、Skill、工具和子 Agent 配置
+Run -> DSH : SDK 启动并初始化，再提交任务
+loop 模型决策与获准工具调用
+    DSH -> External : 模型请求 / MCP 工具调用
+    External --> DSH : 模型或工具结果
+    DSH -> WS : Skill / 文件 / Shell 共用工作区
+    opt 配置了具名子 Agent
+        DSH -> DSH : 委托子 Agent，汇集结果与产物
+    end
+    DSH --> Run : 会话事件与工具结果
+end
+alt 任务完成
+    DSH --> Run : 终态与最终回答
+    Run --> Task : 成功结果
+    Task -> WS : 落盘 task_result.md 与 task.log
+    Task -> Run : 关闭并回收 DSH
+    Task --> Docker : 退出码 0
+else 执行失败 / 超时
+    Run --> Task : 可诊断失败
+    Task -> WS : 记录错误
+    Task -> Run : 回收 DSH 与本次执行
+    Task --> Docker : 非零退出
+end
+OS -> Docker : 读取退出码与日志
+OS -> WS : 查找结果文件，登记 A2A 产物
+@enduml
