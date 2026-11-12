@@ -6,7 +6,7 @@
 
 ![DiOS 与 DiAgent 系统黑盒图](diagent-v0.1-diagrams/01-system.svg)
 
-**DiOS 决定运行哪个 Agent、何时运行、它可以用什么，记录运行状态与产物。DiAgent 按配置完成一次任务或一次对话。** DiOS 通过 Docker Engine 启动和管理容器。Task 模式经共享工作区交付配置和文件，以容器退出码表明结果。Service 模式经 HTTP/SSE 交互。
+**在图示集成中，DiOS 决定运行哪个 Agent、何时运行、它可以用什么，记录运行状态与产物。DiAgent 按配置完成一次任务或一次对话。** DiOS 通过 Docker Engine 启动和管理容器。Task 模式经共享工作区交付配置和文件，以容器退出码表明结果。Service 模式经 HTTP/SSE 交互。其他调度器也可直接使用任务入口，独立任务提交接口见 [运行架构](2026-11-diagent-dsh-architecture.md#1-选型与交付)。
 
 DiAgent 是交付单元，包含 TypeScript 入口、SDK、固定版本的 DSH、profile 和 HQIT 插件，以 Docker 镜像交付。图中的 Docker Engine 属于宿主部署层，容器内部是应用和 DSH 进程。两种入口使用同一套代码，按各自的镜像入口运行。工作区仍沿用现有 DiOS 的 Agent 级挂载约定。 [DiOS service 启动](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/agent_runtime.py#L81) · [DiOS task 启动](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/docker_runner.py#L32)
 
@@ -51,7 +51,7 @@ DiOS 写任务和授权配置，Docker 传入 `TASK_CONFIG`，DiAgent 经 SDK �
 
 ![publish_event 与 DiOS 调度 UML 时序图](diagent-v0.1-diagrams/05-event-sequence.svg)
 
-DSH 选择 `publish_event` 后由 HQIT 插件调用 DiOS。DiOS 校验、匹配订阅并处理派发，经 A2A 启动目标 Agent。插件把事件状态返回给当前 Agent，目标 Agent 的运行状态和产物由 DiOS 独立跟踪。此能力贯通工具调用、DiOS 路由和下一次执行。 [现有事件工具](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/tools/publish_event_tool.py#L53) · [DiOS 手动事件](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/api/os/events.py#L128) · [事件派发](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/event_dispatcher.py#L267)
+`publish_event` 的动作是向 DiOS 发布一条业务事件。插件先检查事件类型和来源，再提交给 DiOS。DiOS 根据订阅和策略决定是否经 A2A 派发，可能启动零个、一个或多个目标 Agent。插件给当前 Agent 返回事件处理状态，目标任务的运行状态和产物由 DiOS 单独跟踪。文件、Shell 和普通 MCP 工具按各自的执行路径运行。 [现有事件工具](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/tools/publish_event_tool.py#L53) · [DiOS 手动事件](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/api/os/events.py#L128) · [事件派发](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/event_dispatcher.py#L267)
 
 [SVG](diagent-v0.1-diagrams/05-event-sequence.svg) · [PlantUML](diagent-v0.1-diagrams/05-event-sequence.puml)
 

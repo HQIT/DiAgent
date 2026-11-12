@@ -2,7 +2,7 @@
 
 2026-11-12。设计基于 DiOS `f2433d9`、独立 DiAgent `12190ee`、DiOS 内嵌 DiAgent `5e22fb3`。首个 Docker PoC 建议以 npm 版本页均列出的 `0.2.2-rc.1` 为候选基线。 [DSH npm 版本](https://www.npmjs.com/package/%40deepseek-ai/dsh?activeTab=versions) · [SDK npm 版本](https://www.npmjs.com/package/%40deepseek-ai/dsh-sdk-client?activeTab=versions)
 
-首个目标是让一条现有 DiOS task 通过更换镜像切到 TypeScript DiAgent。第二个目标是接通常驻 Chat service。
+首个目标是让一条现有 DiOS task 通过更换镜像切到 TypeScript DiAgent。第二个目标是接通常驻 Chat service。DiAgent 同时面向其他项目和外部调度器，任务执行、状态和产物契约可独立使用。
 
 ## 1. 选型与交付
 
@@ -10,14 +10,18 @@
 
 **Git 里提交 DiAgent 源码、HQIT 插件、profile、Dockerfile 和依赖锁；镜像里安装可运行的 DSH。** 首选精确版本的 `@deepseek-ai/dsh` 和 `@deepseek-ai/dsh-sdk-client`。SDK 默认解析同版本的 DSH 可执行文件，也可以通过 `dshBin` 指向随镜像安装的版本。若 npm 制品无法在目标 Linux 镜像运行，可在镜像构建阶段检出固定的上游提交，构建运行产物并显式指定路径。引入长期维护的上游源码分支需要有具体的上游缺口作为依据。 [SDK 运行时解析](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.1/packages/sdk/client/README.md#known-limitations-and-deferred-work)
 
+**外部调度器可以直接使用一次性任务入口，传入 `TASK_CONFIG`，再读取退出状态和结果文件。** 后续增加独立的任务提交入口，复用同一套执行逻辑，对外提供运行标识、状态和结果。HTTP 是候选方式，接口字段在对应任务中定稿。DiOS 的事件路由和鉴权属于 DiOS 集成。独立运行的验收场景使用外部调用方自配的模型、工具和工作区，在无 DiOS 的环境中完成一次任务。
+
 ### 图 1 · 运行架构
 
 ```mermaid
 flowchart LR
     U["Console / 事件 / A2A"] --> OS["DiOS · 调度、容器、状态与授权"]
+    EXT["其他项目 / 外部调度器"]
     subgraph BOX["DiAgent Docker 容器"]
         TASK["Task 入口"]
         HTTP["HTTP / SSE 入口"]
+        SUBMIT["独立任务提交入口 · 拟议"]
         CFG["配置解析"]
         RUN["DSH 运行模块"]
         SDK["官方 TS SDK"]
@@ -28,6 +32,7 @@ flowchart LR
         end
         TASK --> CFG
         HTTP --> CFG
+        SUBMIT -.-> CFG
         CFG --> RUN
         RUN <--> SDK
         SDK <-->|"stdio JSON-RPC"| CORE
@@ -35,9 +40,11 @@ flowchart LR
     OS -->|"TASK_CONFIG"| TASK
     OS <-->|"HTTP / SSE"| HTTP
     TASK -->|"结果文件与日志"| OS
+    EXT <-->|"任务配置、退出状态与产物"| TASK
+    EXT -.-> SUBMIT
     CORE --> MODEL["现有模型端点"]
-    CORE --> MCP["DiOS MCP 网关"]
-    PLUG -->|"授权的事件发布"| OS
+    CORE --> MCP["调用方配置的 MCP / 网关"]
+    PLUG -->|"DiOS 事件发布"| OS
 ```
 
 ## 2. 模块拆分
@@ -55,7 +62,7 @@ flowchart LR
 
 DSH 运行模块统一处理 SDK 细节。Task 和 HTTP 调用者拿到的是运行结果和必要事件；现有 Python 版作为独立镜像保留，用于对照和回滚。等第二个真实内核需要接入时，再决定是否抽象出通用运行时接口。
 
-角色提示与工具权限在启动配置里落实。现有 `tool_selection` 对工具可见性的影响须通过真实工具列表验收。DSH 的 SDK profile 默认有自己的 coding persona 和工具集合，需用 HQIT profile 覆盖角色并收敛工具。按选定版本验证 MCP transport、鉴权头、Skills 路径及可见工具；MCP 授权由原 DiOS 网关执行。 [DSH SDK profile 配置](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.2/packages/bundle/sdk-app/cordis.patch.yml) · [DiOS MCP 网关](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/e2ag_tool_gateway.py#L118)
+角色提示与工具权限在启动配置里落实。现有 `tool_selection` 对工具可见性的影响须通过真实工具列表验收。DSH 的 SDK profile 默认有自己的 coding persona 和工具集合，需用 HQIT profile 覆盖角色并收敛工具。按选定版本验证 MCP transport、鉴权头、Skills 路径及可见工具。DiOS 集成沿用其 MCP 网关，独立部署使用调用方配置的 MCP。 [DSH SDK profile 配置](https://github.com/deepseek-ai/deepseek-harness/blob/dsh-v0.2.2-rc.2/packages/bundle/sdk-app/cordis.patch.yml) · [DiOS MCP 网关](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/e2ag_tool_gateway.py#L118)
 
 ## 3. Task 首先实现换镜像
 
