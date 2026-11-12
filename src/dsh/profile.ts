@@ -66,13 +66,13 @@ async function mcpRows(path: string | undefined): Promise<object[]> {
 /** 将任务的工具和模型配置写到私有临时目录，返回启动时要加载的配置路径。 */
 export async function writeTaskProfile(config: TaskConfig, home: string, runDirectory: string): Promise<string> {
   const skills = await skillRoots(config, home);
-  const plugins = [
-    {
+  const plugins = await mcpRows(config.mcpConfigPath);
+  if (config.isDiosEventPublishingEnabled) {
+    plugins.unshift({
       id: 'diagent-publish-event',
       name: fileURLToPath(new URL('./plugins/publish-event.js', import.meta.url)),
-    },
-    ...await mcpRows(config.mcpConfigPath),
-  ];
+    });
+  }
   const file = join(home, 'task.cordis.yml');
   const rows = [
     ...disabledRows.map(id => ({ id, disabled: true })),

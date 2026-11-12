@@ -17,6 +17,7 @@ export interface TaskConfig {
   skillsDir: string;
   skillNames: string[];
   mcpConfigPath?: string;
+  isDiosEventPublishingEnabled: boolean;
   model: {
     name: string;
     baseURL: string;
@@ -95,6 +96,10 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
   const trigger = optionalObject(task.trigger, 'task.trigger');
   const mode = env.TRIGGER_MODE ?? trigger.mode ?? 'once';
   if (mode !== 'once') throw new TaskConfigError('The DSH task runner currently supports trigger.mode=once');
+  const diosEvents = env.DIAGENT_ENABLE_DIOS_EVENTS ?? 'true';
+  if (diosEvents !== 'true' && diosEvents !== 'false') {
+    throw new TaskConfigError('DIAGENT_ENABLE_DIOS_EVENTS must be true or false');
+  }
   if (task.subagents != null && (!Array.isArray(task.subagents) || task.subagents.length > 0)) {
     throw new TaskConfigError('Configured subagents are not supported by the DSH task runner yet');
   }
@@ -170,6 +175,7 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     skillsDir,
     skillNames,
     mcpConfigPath,
+    isDiosEventPublishingEnabled: diosEvents === 'true',
     model: {
       name: requiredText(model.model, 'model.model'),
       baseURL,

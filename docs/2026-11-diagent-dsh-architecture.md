@@ -57,7 +57,7 @@ flowchart LR
 | HTTP 入口 | 提供 `/health`、`/v1/chat/completions`，解析现有字段，映射普通 JSON、SSE、工具事件和错误。负责 HTTP 生命周期。 | `src/service/` |
 | 配置 | 解析现有模型配置、角色提示、workspace、Skills、MCP、工具白名单与预算，生成本次启动所需的 DSH 配置。只把明确兼容的字段映射过去。 | `src/config/` |
 | DSH 运行模块 | 对 task 提供一次运行及最终结果，对 service 提供会话句柄和运行事件。内部管理 SDK 初始化、通知订阅、根/子会话归属、等待终态、截止时间及子进程清理。 | `src/dsh/` |
-| HQIT 插件 | 在 DSH 进程注册 `publish_event`，保留原有工具名与参数，按事件目录和来源规则检查后提交，返回 DiOS 处理结果。Task profile 从镜像内加载插件。 | `src/dsh/plugins/` |
+| HQIT 插件 | 在 DSH 进程注册 `publish_event`，保留原有工具名与参数，按事件目录和来源规则检查后提交，返回 DiOS 处理结果。Task profile 默认加载插件，部署可关闭。 | `src/dsh/plugins/` |
 | 运行配置与打包 | 固定 SDK、DSH、Node、插件及依赖。维护一套基础 profile 和 task/service 的必要差异，验证最终生效的插件列表。 | `profiles/`、`docker/`、`pnpm-lock.yaml` |
 
 DSH 运行模块统一处理 SDK 细节。Task 和 HTTP 调用者拿到的是运行结果和必要事件；现有 Python 版作为独立镜像保留，用于对照和回滚。等第二个真实内核需要接入时，再决定是否抽象出通用运行时接口。

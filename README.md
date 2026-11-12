@@ -17,6 +17,8 @@ npm run test:task
 
 任务内可通过 `publish_event` 向 DiOS 提交事件。插件先检查事件目录和来源规则，每次工具调用最多提交一次，且不会重试。部署环境用 `DIOS_API` 指定 DiOS 地址，默认 `http://backend:8000`。插件可从任务容器环境读取专用于事件 API 的 `DIAGENT_EVENT_ACCESS_TOKEN`，以 Bearer 形式发送。全局令牌 `DIOS_ACCESS_TOKEN` 只配置在 DiOS backend。启用该鉴权的环境需要先接通限权事件凭据或可信网关，并验证实际注入和发布行为。
 
+独立部署时，在启动 DiAgent 的环境设置 `DIAGENT_ENABLE_DIOS_EVENTS=false`，模型的工具列表中就不会出现 `publish_event`。该变量只接受 `true` 和 `false`，其他值会在任务启动时报告配置错误。省略时默认启用，以兼容现有 DiOS 任务。
+
 ## 特性
 
 - **多模型支持**: 支持 Ollama、vLLM、OpenAI 及兼容 API 的 LLM 提供商

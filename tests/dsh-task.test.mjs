@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 
-test('DSH task preserves the DiOS input, tool and result contract', { timeout: 90_000 }, async () => {
+test('DSH task preserves the input, MCP and result contract with DiOS events disabled', { timeout: 90_000 }, async () => {
   const cacheDir = join(project, '.cache');
   await mkdir(cacheDir, { recursive: true });
   await using scratch = await mkdtempDisposable(join(cacheDir, 'diagent-smoke-'));
@@ -98,6 +98,7 @@ test('DSH task preserves the DiOS input, tool and result contract', { timeout: 9
     const child = spawn(process.execPath, ['dist/task/main.js'], {
       cwd: project,
       env: { ...process.env, TASK_CONFIG: taskConfig, OUTPUT_DIR: outputRoot, TRIGGER_MODE: 'once',
+        DIAGENT_ENABLE_DIOS_EVENTS: 'false',
         DIAGENT_TASK_TIMEOUT_MS: '35000', NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1',
         TMPDIR: workspace, TEMP: workspace, TMP: workspace },
       stdio: ['ignore', 'pipe', 'pipe'],

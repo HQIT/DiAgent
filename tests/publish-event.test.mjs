@@ -27,7 +27,7 @@ function sendModelChunk(response, delta, finish) {
 
 async function runEventTask({
   input = event, sourcePattern = 'github/*', sourceEventTypes = [event.event_type], manualStatus = 200, manualBody,
-  accessToken = 'fake-dios-token', backendToken, workspaceEnv,
+  accessToken = 'fake-dios-token', backendToken, workspaceEnv, diosEvents, expectedExitCode = 0,
 } = {}) {
   const cache = join(project, '.cache');
   await mkdir(cache, { recursive: true });
@@ -91,6 +91,7 @@ async function runEventTask({
     const child = spawn(process.execPath, ['dist/task/main.js'], {
       cwd: project,
       env: { ...process.env, TASK_CONFIG: configPath, OUTPUT_DIR: output, TRIGGER_MODE: 'once',
+        DIAGENT_ENABLE_DIOS_EVENTS: diosEvents,
         DIOS_API: baseURL, DIAGENT_EVENT_ACCESS_TOKEN: accessToken ?? undefined, DIOS_ACCESS_TOKEN: backendToken,
         DIAGENT_TASK_TIMEOUT_MS: '35000',
         NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1', TMPDIR: workspace, TMP: workspace, TEMP: workspace },
@@ -103,7 +104,8 @@ async function runEventTask({
       child.once('error', reject);
       child.once('close', resolve);
     });
-    assert.equal(code, 0, diagnostics);
+    assert.equal(code, expectedExitCode, diagnostics);
+    if (code !== 0) return { diagnostics, apiHeaders };
     const [runDirectory] = await readdir(output);
     return { result: await readFile(join(output, runDirectory, 'task_result.txt'), 'utf8'),
       submissions, apiHeaders };
@@ -119,6 +121,22 @@ test('publish_event submits a cataloged event exactly once and returns the DiOS 
   assert.deepEqual(submissions, [event], 'The DSH tool must POST the original event once. Result: ' + result);
   assert.deepEqual(JSON.parse(result), { ok: true, ...publishedEvent });
   assert.deepEqual(apiHeaders, ['Bearer fake-dios-token', 'Bearer fake-dios-token', 'Bearer fake-dios-token']);
+});
+
+test('a deployment can disable publish_event for standalone tasks', { timeout: 45_000 }, async () => {
+  const { result, apiHeaders } = await runEventTask({
+    diosEvents: 'false', workspaceEnv: 'DIAGENT_ENABLE_DIOS_EVENTS=true\n',
+  });
+
+  assert.equal(result, 'publish_event is unavailable');
+  assert.deepEqual(apiHeaders, [], 'Standalone task must not contact DiOS');
+});
+
+test('an invalid publish_event setting fails before publishing an event', { timeout: 45_000 }, async () => {
+  const { diagnostics, apiHeaders } = await runEventTask({ diosEvents: 'flase', expectedExitCode: 2 });
+
+  assert.match(diagnostics, /DIAGENT_ENABLE_DIOS_EVENTS must be true or false/);
+  assert.deepEqual(apiHeaders, []);
 });
 
 test('publish_event rejects sources outside the DiOS rules without submitting', { timeout: 45_000 }, async () => {
