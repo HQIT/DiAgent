@@ -9,6 +9,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "task:dsh": "node dist/task/main.js",
+    "service:dsh": "node dist/service/server.js",
+    "test:service": "npm run build && node --test tests/dsh-service.test.mjs",
     "test:task": "npm run build && node --test --test-concurrency=1 tests/dsh-task.test.mjs tests/publish-event.test.mjs"
   },
   "dependencies": {

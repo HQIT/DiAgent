@@ -2,6 +2,10 @@
 
 基于 LangChain + LangGraph + DeepAgents 的智能体任务执行框架，通过 Docker 容器运行复杂的 AI 任务。
 
+## TypeScript / DSH 常驻服务试点
+
+使用 Node.js 24.9 或更高版本。执行 `npm run build` 后运行 `npm run service:dsh`，服务在端口 `8000` 提供 `GET /health`，响应为 `{"status":"healthy"}`。执行 `npm run test:service` 验证 HTTP 契约。健康检查表示 HTTP 进程存活，在线 Chat 和 A2A service 执行仍待接通。
+
 ## TypeScript / DSH 一次性任务试点
 
 使用 Node.js 24.9 或更高版本。安装锁定依赖后，执行使用本机模拟模型、MCP 和 DiOS 的集成测试。
