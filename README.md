@@ -13,7 +13,9 @@ npm run test:task
 
 本地运行时，先执行 `npm run build`，设置 `TASK_CONFIG` 指向一次性任务的 JSON/YAML 文件，再执行 `npm run task:dsh`。试点 Dockerfile 位于 `docker/agent-task-dsh/Dockerfile`，可用 `docker build -f docker/agent-task-dsh/Dockerfile -t diagent-task:dsh-dev .` 单独构建。现有 Compose 仍使用 Python 镜像。
 
-试点支持 OpenAI-compatible 模型、指定 Skills 与 Streamable HTTP MCP，保留配置的结果文件名和任务退出码。当前温度使用模型路由默认值。具名子 Agent、显式 MCP 工具白名单、独立触发器及 Chat/SSE 属于后续验收范围。 [v0.1 兼容基线](docs/2026-11-diagent-v0.1-compatibility-baseline.md)
+试点支持 OpenAI-compatible 模型、指定 Skills 与 Streamable HTTP MCP，保留配置的结果文件名和任务退出码。当前温度使用模型路由默认值。具名子 Agent 的存量配置、独立触发器及 Chat/SSE 按兼容基线验收。 [v0.1 兼容基线](docs/2026-11-diagent-v0.1-compatibility-baseline.md)
+
+一次性任务的 `task.tools` 使用 MCP 服务公布的原始工具名。省略时使用所有已发现的 MCP 工具，空数组关闭 MCP，非空数组从任务启动时发现的工具中选取。文件等内置工具仍按任务配置提供。非空名单要求服务名和工具名能唯一转换成 DSH 工具名，存在歧义或需归一化的配置会报错。DiOS 网关仍负责上游工具授权。
 
 任务内可通过 `publish_event` 向 DiOS 提交事件。插件先检查事件目录和来源规则，每次工具调用最多提交一次，且不会重试。部署环境用 `DIOS_API` 指定 DiOS 地址，默认 `http://backend:8000`。插件可从任务容器环境读取专用于事件 API 的 `DIAGENT_EVENT_ACCESS_TOKEN`，以 Bearer 形式发送。全局令牌 `DIOS_ACCESS_TOKEN` 只配置在 DiOS backend。启用该鉴权的环境需要先接通限权事件凭据或可信网关，并验证实际注入和发布行为。
 
@@ -163,7 +165,7 @@ docker-compose up
 | `skills_dir` | string | 否 | `skills` | Skills 目录名（相对 workspace） |
 | `skill_names` | array | 否 | `[]` | 启用的技能列表，空表示启用全部 |
 | `mcp_config_path` | string | 否 | `""` | MCP 配置文件路径（相对 workspace），空表示不使用 MCP |
-| `tools` | array | 否 | `[]` | 启用的工具名列表，空表示启用全部 |
+| `tools` | array | 否 | 省略 | MCP 工具原始名称列表。省略启用全部，空数组关闭 MCP 工具 |
 
 #### 输出配置
 

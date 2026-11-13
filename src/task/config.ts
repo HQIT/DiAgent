@@ -18,6 +18,7 @@ export interface TaskConfig {
   temperature?: number;
   skillsDir: string;
   skillNames: string[];
+  mcpToolNames: string[];
   mcpConfigPath?: string;
   isDiosEventPublishingEnabled: boolean;
   model: {
@@ -144,13 +145,10 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
   }
 
   const selectedTools = stringList(task.tools, 'task.tools');
-  if (selectedTools.length > 0) {
-    throw new TaskConfigError('Explicit MCP tool lists require tool-name mapping in the DSH runner');
-  }
   const taskMcpPath = text(task.mcp_config_path, 'task.mcp_config_path');
   const defaultMcpPath = text(app.MCP_CONFIG_PATH ?? env.MCP_CONFIG_PATH, 'MCP_CONFIG_PATH');
   // 显式空工具列表或空 MCP 路径表示关闭 MCP。省略时才允许使用部署默认路径。
-  const mcpConfigPath = Array.isArray(task.tools) || task.mcp_config_path === '' ? undefined
+  const mcpConfigPath = (Array.isArray(task.tools) && selectedTools.length === 0) || task.mcp_config_path === '' ? undefined
     : taskMcpPath ? resolve(workspace, taskMcpPath)
     : defaultMcpPath ? resolve(defaultMcpPath) : undefined;
 
@@ -182,6 +180,7 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     temperature: temperature ?? undefined,
     skillsDir,
     skillNames,
+    mcpToolNames: selectedTools,
     mcpConfigPath,
     isDiosEventPublishingEnabled: diosEvents === 'true',
     model: {

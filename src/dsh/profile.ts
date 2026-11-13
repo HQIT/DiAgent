@@ -27,7 +27,7 @@ async function skillRoots(config: TaskConfig, home: string): Promise<string[]> {
   return [selectedRoot];
 }
 
-async function mcpRows(path: string | undefined): Promise<object[]> {
+async function mcpRows(path: string | undefined) {
   if (!path) return [];
   let servers: unknown;
   try {
@@ -71,7 +71,24 @@ async function mcpRows(path: string | undefined): Promise<object[]> {
  */
 export async function writeTaskProfile(config: TaskConfig, home: string, runDirectory: string): Promise<string> {
   const skills = await skillRoots(config, home);
-  const plugins = await mcpRows(config.mcpConfigPath);
+  const mcpPlugins = await mcpRows(config.mcpConfigPath);
+  const plugins: object[] = [...mcpPlugins];
+  if (mcpPlugins.length > 0 && config.mcpToolNames.length > 0) {
+    const serverNames = mcpPlugins.map(plugin => plugin.config.serverName);
+    // DSH 对原名做拼接和有损归一化。只接受能唯一对应原名的配置。
+    if (serverNames.some(name => name.endsWith('_') || name.includes('__'))) {
+      throw new TaskConfigError('Explicit MCP tool lists require unambiguous server names');
+    }
+    const toolNames = serverNames.flatMap(server => config.mcpToolNames.map(tool => `mcp__${server}__${tool}`));
+    if (toolNames.some(name => name.length > 64 || /[^A-Za-z0-9_-]/.test(name) || /_[a-f0-9]{12}$/.test(name))) {
+      throw new TaskConfigError('Explicit MCP tool lists require names that DSH can represent without normalization or alias ambiguity');
+    }
+    plugins.push({
+      id: 'diagent-mcp-tool-selection',
+      name: fileURLToPath(new URL('./plugins/mcp-tool-selection.js', import.meta.url)),
+      config: { toolNames },
+    });
+  }
   if (config.maxToolRounds !== undefined) {
     plugins.push({
       id: 'diagent-tool-round-limit',

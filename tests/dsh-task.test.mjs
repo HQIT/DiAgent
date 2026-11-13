@@ -32,14 +32,17 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const body = JSON.parse(Buffer.concat(chunks).toString());
 
     if (request.url === '/mcp') {
-      mcpRequests.push({ method: body.method, authorization: request.headers.authorization });
+      mcpRequests.push({ method: body.method, name: body.params?.name, authorization: request.headers.authorization });
       // 模拟工具发现晚于连接建立。测试直接检查模型首轮请求里的工具声明。
       if (body.method === 'tools/list') await delay(1500);
       const results = {
         initialize: { protocolVersion: body.params?.protocolVersion, capabilities: { tools: {} },
           serverInfo: { name: 'smoke', version: '1' } },
         'tools/list': { tools: [{ name: 'lookup', description: 'Look up a test value',
-          inputSchema: { type: 'object', properties: {} } }] },
+          inputSchema: { type: 'object', properties: {} } }, {
+          name: 'unselected', description: 'An MCP tool excluded by task configuration',
+          inputSchema: { type: 'object', properties: {} },
+        }] },
         'tools/call': { content: [{ type: 'text', text: 'mcp-ok' }] },
       };
       if (body.id === undefined) {
@@ -67,12 +70,15 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
 
     const toolResults = body.messages.filter(message => message.role === 'tool');
     const isBudgetTask = body.messages.some(message => message.role === 'user' && message.content === 'tool-budget');
+    const isSelectionTask = body.messages.some(message => message.role === 'user' && message.content === 'selected-mcp');
     const hasToolResult = toolResults.length > 0;
     const toolCall = { index: 0, id: 'call-smoke', type: 'function',
       function: { name: 'mcp__smoke__lookup', arguments: '{}' } };
     const needsTool = isBudgetTask ? toolResults.length < 3 : !hasToolResult;
     const toolCalls = isBudgetTask && !hasToolResult
       ? [toolCall, { ...toolCall, index: 1, id: 'call-smoke-second' }]
+      : isSelectionTask ? [toolCall, { index: 1, id: 'call-unselected', type: 'function',
+        function: { name: 'mcp__smoke__unselected', arguments: '{}' } }]
       : [{ ...toolCall, id: isBudgetTask ? 'call-smoke-next-round' : toolCall.id }];
     const delta = needsTool ? { tool_calls: toolCalls } : {
       content: isBudgetTask ? toolResults.map(message => message.content).join('\n') : 'pilot-ok',
@@ -165,6 +171,20 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const invalidBudget = await run('tool-budget', 'invalid-budget', 'mcp.json', { max_tool_rounds: 0 });
     assert.equal(invalidBudget.code, 2, invalidBudget.output);
     assert.match(invalidBudget.output, /task\.max_tool_rounds must be a positive integer/);
+
+    const requestCount = modelRequests.length;
+    const selected = await run('selected-mcp', 'selected', 'mcp.json', { tools: ['lookup'] });
+    assert.equal(selected.code, 0, selected.output);
+    assert.equal(selected.result, 'pilot-ok');
+    const visibleTools = modelRequests[requestCount].tools.map(tool => tool.function.name);
+    assert.deepEqual(visibleTools.filter(name => name.startsWith('mcp__')), ['mcp__smoke__lookup']);
+    assert.ok(visibleTools.includes('read'), 'Selecting MCP tools must preserve the built-in file reader');
+    assert.ok(!mcpRequests.some(request => request.name === 'unselected'),
+      'Calling a hidden tool must not reach the MCP server');
+
+    const ambiguous = await run('selected-mcp', 'ambiguous', 'mcp.json', { tools: ['lookup_000000000000'] });
+    assert.notEqual(ambiguous.code, 0);
+    assert.match(ambiguous.output + (ambiguous.log ?? ''), /alias ambiguity/);
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

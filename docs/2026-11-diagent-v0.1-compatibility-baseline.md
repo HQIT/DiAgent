@@ -13,7 +13,7 @@
 | DSH | 在新版中实现模型调用、Agent 循环、工具和 Skills、会话与子 Agent。HQIT 专属工具以插件注册。 |
 | Docker | 提供 task/service 运行环境、挂载和外层隔离。DiOS 管容器，DiAgent 管容器内 DSH 子进程。 |
 
-**发布分两步。** 首个增量只验一次性 task 换镜像。v0.1 全量切换还须通过 service、SSE、HIL、会话和现有使用清单的验收。独立入口按实际调用者确定迁移路径，旧镜像可回滚。 [DiOS 架构](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/docs/architecture.md) · [DiAgent 构建入口](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/core/builder.py#L29) · [DiOS A2A](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/a2a_service.py#L149)
+**v0.1 完整替换现有 DiAgent。** task 和 service 均使用 TypeScript + DSH，沿用 DiOS 的部署级镜像配置。一次性 Reviewer 任务用于验证替换契约，全量切换还须通过 service、SSE、HIL、会话和存量调用验收。独立入口按实际调用者确定迁移路径。旧 DeepAgents 镜像仅用于切换验证和回滚。 [DiOS 架构](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/docs/architecture.md) · [DiAgent 构建入口](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/core/builder.py#L29) · [DiOS A2A](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/a2a_service.py#L149)
 
 ```mermaid
 flowchart LR
@@ -60,7 +60,7 @@ flowchart LR
 | Skills | task 按 `skills_dir/skill_names` 装配，名单为空或未给时使用整个目录。service 只有在选到工具时才进入 Agent 路径，该路径使用共享技能目录。DiOS Chat 仅根据 Skills 是否为空追加工具 ID，未传具体 Skill 名单。 | 现有 `SKILL.md` 与附属文件可用。验证具名 Skill 真正加载，工具权限仍由实际运行配置决定。 |
 | 文件与 Shell | Deep Agents 提供文件读写、编辑、搜索等工具。`shell(command,cwd?,timeout?)` 在容器内运行 Bash，默认 `/workspace`、300 秒，返回退出码和有界 stdout/stderr。 | 文件工具、Shell 共用工作区。验证 cwd、读写权限、超时、退出码和输出。若 DSH 原生工具名或结果格式不同，兼容现有 Skill 和 DiOS 依赖的 `shell` 接口。 |
 | `publish_event` | 输入 `event_type/source/subject/data`。查事件目录、source pattern，再 POST DiOS `/api/os/events/manual`，返回事件 ID、状态或拒绝/失败文本。 | HQIT 插件保留工具名、参数和成功/拒绝行为。验证一次发布和一条拒绝，并在实际使用的 DiOS 鉴权模式下验收。路由仍由 DiOS 管理。 |
-| 内部子 Agent | task 可配置具名子 Agent、描述、角色、模型、工具、MCP、Skills 和可选任务说明。主子 Agent 收到同一产物目录提示。独立样例实际使用 researcher、writer、reviewer，DiOS 可下发 subagents。 | 纳入 task 验收。至少跑通一个真实具名子 Agent，验证角色、工具授权、Skill 和产物。异模型、独立 MCP 等按已用配置验证。 |
+| 内部子 Agent | task 可配置具名子 Agent、描述、角色、模型、工具、MCP、Skills 和可选任务说明。主子 Agent 收到同一产物目录提示。独立样例使用 researcher、writer、reviewer，DiOS 可下发 subagents。 | 核实存量调用。存在依赖时纳入 task 兼容验收，验证角色、工具授权、Skill 和产物。新的多 Agent 共用容器方案列为后续方向。 |
 | 日志与产物 | task 在输出根下为每次运行建子目录，写结果、过程日志和附加文件。DiOS 消费 Markdown 与容器日志。 | 保持结果路径及文件编码，日志能定位模型、失败工具与终态。验证附加文件和两次运行各自结果。观察中断后避免重复调用有副作用的工具。 |
 
 源码：[模型工厂](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/llm/factory.py#L13) · [service 执行](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/core/agent.py#L106) · [task runner](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/task/runner.py#L173) · [MCP 客户端](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/mcp/client.py#L17) · [工具选择](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/mcp/tool_registry.py#L46) · [Shell](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/tools/shell_tool.py#L15) · [事件工具](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/tools/publish_event_tool.py#L53) · [MCP 网关](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/services/e2ag_tool_gateway.py#L118) · [子 Agent 样例](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/workspace/agent-task.json#L37) · [DiOS 回归](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/docs/regression-master-diagent.md)
@@ -111,7 +111,7 @@ flowchart LR
 | 编号 | 场景 | 通过条件 |
 | --- | --- | --- |
 | 1 | DiOS once task 换镜像 | 现有 JSON 可读，模型和角色正确，使用一个 Skill、一个只读 MCP 与 Shell。DiOS 从原路径读出报告并登记 artifact。 |
-| 2 | 具名子 Agent | 指定角色、Skill 与获准工具实际生效，任务结果和附加文件均可回收。 |
+| 2 | 存量具名子 Agent 配置 | 有存量调用时，指定角色、Skill 与获准工具实际生效，任务结果和附加文件均可回收。 |
 | 3 | 工具授权与事件 | 测试事件发布一次。非法类型/source 与 MCP 网关拒绝有可读反馈，未授权调用无对应业务结果。 |
 | 4 | 失败和停止 | 缺配置、模型失败、MCP 失败、超时可区分。容器停止时 DSH 子进程退出。观察中断不重复触发已有工具操作。 |
 | 5 | 普通 Chat 与 A2A service | 健康探针通过，非流式响应可被解析。模型和角色选择有证据，缺配置的失败可定位。 |

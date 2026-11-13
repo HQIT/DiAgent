@@ -141,6 +141,6 @@ flowchart LR
 | Chat 替换 | 主要不确定项。会话历史、流式粒度、取消和进程成本决定适配量。 | 从实际 DiOS 请求跑两轮 Chat、两个并发会话和一个工具调用。核对历史无重复、SSE 与前端行为、状态和断开处理。 |
 | 全量替换 | 取决于现有调用清单。 | 查明 `/v1/events`、`/v1/tools`、`/v1/sessions`、独立触发器、子 Agent 配置、检查点的使用情况并确定迁移验收。用新旧镜像配置做一次回滚演练。 |
 
-实施顺序建议是 **镜像与 profile 冒烟 → 一个真实 task 换镜像 → Chat 契约 PoC → 按 Agent 或部署灰度**。Task 与 service 的镜像版本可独立切换。当前 DiOS 的镜像选择主要来自实例级配置。若需要同一实例内按 Agent 选择新旧镜像，应增加对应配置并验证回滚，或使用独立验证环境先切一条任务。 [DiOS 镜像配置](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/config.py#L13)
+实施顺序是 **镜像与 profile 冒烟 → 一次性任务验收 → 在线服务与存量调用兼容验收 → 按部署切换**。DiOS 沿用现有的 task 和 service 镜像配置。两类入口通过验收后均使用 TypeScript + DSH，旧 DeepAgents 镜像用于回滚。部署验收优先验证保持镜像标签时，DiOS 持续运行，新任务使用更新后的镜像。修改 Compose 中的镜像选择环境变量时，用原数据库和工作区重新创建 DiOS backend 容器。 [DiOS 镜像配置](https://github.com/HQIT/DiOS/blob/f2433d950925b773ae33e7c50cb0579dea1d4115/backend/app/config.py#L13)
 
 本设计基于本地源码和上游公开接口，未在目标 Linux 镜像中运行 DSH。图中的会话 ID 透传、插件权限和运行事件映射均为拟议设计。当前交付为架构文档，未修改产品代码。
