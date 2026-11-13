@@ -37,6 +37,8 @@ export async function runDshTask(
         DIOS_API: process.env.DIOS_API || 'http://backend:8000',
         DIAGENT_EVENT_ACCESS_TOKEN: process.env.DIAGENT_EVENT_ACCESS_TOKEN ?? '',
         DIAGENT_MODEL_API_KEY: config.model.apiKey,
+        // 空值也显式传递，避免任务工作区的 .env 成为 Git 凭据来源。
+        GIT_PLATFORM_TOKEN: process.env.GIT_PLATFORM_TOKEN ?? '',
         DSH_PERMISSION_MODE: 'workspace-write',
         DSH_TELEMETRY_MODE: 'DISABLED',
         DSH_MAX_TOKENS_AS_SUCCESS: 'false',

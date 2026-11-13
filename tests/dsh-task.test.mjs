@@ -72,6 +72,8 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const isBudgetTask = body.messages.some(message => message.role === 'user' && message.content === 'tool-budget');
     const isSelectionTask = body.messages.some(message => message.role === 'user' && message.content === 'selected-mcp');
     const shellPrompt = body.messages.find(message => message.role === 'user' && message.content.startsWith('legacy-shell'));
+    const isCredentialTask = shellPrompt?.content === 'legacy-shell-credentials';
+    const isUnconfiguredCredentialTask = shellPrompt?.content === 'legacy-shell-unconfigured';
     const isShellTask = Boolean(shellPrompt);
     const hasToolResult = toolResults.length > 0;
     const toolCall = { index: 0, id: 'call-smoke', type: 'function',
@@ -79,11 +81,24 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const needsTool = isBudgetTask ? toolResults.length < 3 : !hasToolResult;
     const toolCalls = isShellTask ? [{ index: 0, id: 'call-legacy-shell', type: 'function',
       function: { name: 'shell', arguments: JSON.stringify({
-        command: shellPrompt.content === 'legacy-shell-timeout' ? 'sleep 10'
+        command: isCredentialTask
+          ? [
+            'test "$GIT_PLATFORM_TOKEN" = "$FIXTURE_EXPECTED_GIT_VALUE"',
+            'test "$GIT_PLATFORM_BASE_URL:$GIT_REPO" = "https://example.test:org/repo"',
+            'test "$GIT_USER_NAME:$GIT_USER_EMAIL" = "Fixture User:fixture@example.test"',
+            'test -z "$DSH_DIAGENT_GIT_PLATFORM_TOKEN$DIAGENT_MODEL_API_KEY$DIAGENT_EVENT_ACCESS_TOKEN$UNRELATED_TOKEN"',
+            'printf "credential-scope-ok"',
+          ].join(' && ')
+          : isUnconfiguredCredentialTask ? 'test -z "$GIT_PLATFORM_TOKEN" && printf "no-injected-credential"'
+          : shellPrompt.content === 'legacy-shell-timeout' ? 'sleep 10'
           : "test -f SKILL.md || exit 9; printf 'shell-stdout'; printf 'shell-stderr' >&2; exit 7",
         ...(shellPrompt.content === 'legacy-shell' ? { cwd: 'skills/smoke-skill' } : {}),
         timeout: shellPrompt.content === 'legacy-shell-timeout' ? 1 : 5,
-      }) } }] : isBudgetTask && !hasToolResult
+      }) } }, ...(isCredentialTask ? [{ index: 1, id: 'call-native-bash', type: 'function',
+      function: { name: 'bash', arguments: JSON.stringify({
+        description: 'Check credentials are unavailable to native Bash',
+        command: 'test -z "$GIT_PLATFORM_TOKEN$DSH_DIAGENT_GIT_PLATFORM_TOKEN" && printf "native-bash-clean"',
+      }) } }] : [])] : isBudgetTask && !hasToolResult
       ? [toolCall, { ...toolCall, index: 1, id: 'call-smoke-second' }]
       : isSelectionTask ? [toolCall, { index: 1, id: 'call-unselected', type: 'function',
         function: { name: 'mcp__smoke__unselected', arguments: '{}' } }]
@@ -111,7 +126,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     smoke: { transport: 'streamable_http', url: baseURL + '/mcp', headers: { Authorization: 'Bearer smoke-mcp' } },
   }));
 
-  async function run(prompt, label, mcpPath, taskOptions = {}) {
+  async function run(prompt, label, mcpPath, taskOptions = {}, taskEnv = {}) {
     const taskConfig = join(workspace, label + '.json');
     const outputRoot = join(workspace, label);
     await writeFile(taskConfig, JSON.stringify({
@@ -130,7 +145,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
       env: { ...process.env, TASK_CONFIG: taskConfig, OUTPUT_DIR: outputRoot, TRIGGER_MODE: 'once',
         DIAGENT_ENABLE_DIOS_EVENTS: 'false',
         DIAGENT_TASK_TIMEOUT_MS: '35000', NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1',
-        TMPDIR: workspace, TEMP: workspace, TMP: workspace },
+        TMPDIR: workspace, TEMP: workspace, TMP: workspace, ...taskEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
@@ -206,6 +221,30 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
       const timedOut = await run('legacy-shell-timeout', 'shell-timeout', '');
       assert.equal(timedOut.code, 0, timedOut.output);
       assert.equal(timedOut.result, 'exit_code: -1\nstdout:\n\nstderr:\ncommand timed out after 1s');
+      await writeFile(join(workspace, '.env'), 'GIT_PLATFORM_TOKEN=fixture-workspace-credential\n');
+      const credentialRequest = modelRequests.length;
+      const fakeGitValue = "fixture-git-credential ' \" $ ` \\";
+      const credentials = await run('legacy-shell-credentials', 'shell-credentials', '', {}, {
+        GIT_PLATFORM_TOKEN: fakeGitValue,
+        FIXTURE_EXPECTED_GIT_VALUE: fakeGitValue,
+        GIT_PLATFORM_BASE_URL: 'https://example.test',
+        GIT_REPO: 'org/repo',
+        GIT_USER_NAME: 'Fixture User',
+        GIT_USER_EMAIL: 'fixture@example.test',
+        DIAGENT_EVENT_ACCESS_TOKEN: 'fixture-event-credential',
+        UNRELATED_TOKEN: 'fixture-unrelated-credential',
+      });
+      assert.equal(credentials.code, 0, credentials.output);
+      assert.match(credentials.result, /^exit_code: 0\nstdout:\ncredential-scope-ok\nstderr:\n/);
+      assert.match(credentials.result, /native-bash-clean/);
+      assert.doesNotMatch(JSON.stringify(modelRequests.slice(credentialRequest)) + credentials.output + credentials.log + credentials.result,
+        /fixture-(git|workspace|event|unrelated)-credential/);
+
+      const unconfigured = await run('legacy-shell-unconfigured', 'shell-unconfigured', '', {}, {
+        GIT_PLATFORM_TOKEN: '',
+      });
+      assert.equal(unconfigured.code, 0, unconfigured.output);
+      assert.equal(unconfigured.result, 'exit_code: 0\nstdout:\nno-injected-credential\nstderr:\n');
     }
   } finally {
     server.closeAllConnections();
