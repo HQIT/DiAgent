@@ -1,3 +1,4 @@
+/** 通过真实 DSH 子进程验证一次性任务，模型和 MCP 服务使用本机模拟端点。 */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtempDisposable, readFile, readdir, writeFile } from 'node:fs/promises';
@@ -5,6 +6,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 
@@ -31,6 +33,8 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
 
     if (request.url === '/mcp') {
       mcpRequests.push({ method: body.method, authorization: request.headers.authorization });
+      // 模拟工具发现晚于连接建立。测试直接检查模型首轮请求里的工具声明。
+      if (body.method === 'tools/list') await delay(1500);
       const results = {
         initialize: { protocolVersion: body.params?.protocolVersion, capabilities: { tools: {} },
           serverInfo: { name: 'smoke', version: '1' } },
@@ -40,9 +44,12 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
       };
       if (body.id === undefined) {
         response.writeHead(202).end();
+      } else if (Object.hasOwn(results, body.method)) {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: results[body.method] }));
       } else {
         response.writeHead(200, { 'Content-Type': 'application/json' })
-          .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: results[body.method] ?? {} }));
+          .end(JSON.stringify({ jsonrpc: '2.0', id: body.id, error: { code: -32601, message: 'Method not found' } }));
       }
       return;
     }
@@ -124,6 +131,8 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     assert.equal(success.result, 'pilot-ok');
     assert.match(success.log, /\[complete\]/);
     assert.equal(modelRequests[0].model, 'smoke-model');
+    assert.ok(modelRequests[0].tools?.some(tool => tool.function.name === 'mcp__smoke__lookup'),
+      'The first model request must include the MCP tool after initial discovery');
     assert.match(JSON.stringify(modelRequests[0].messages), /Smoke system prompt/);
     assert.ok(modelRequests[0].messages.some(message => message.role === 'user' && message.content === '/literal-smoke'));
     assert.match(JSON.stringify(modelRequests[0]), /DiAgent smoke skill marker/);
