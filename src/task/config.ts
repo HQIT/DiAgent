@@ -32,6 +32,28 @@ export interface TaskConfig {
 /** 标识任务无法启动的输入错误，由命令入口映射为退出码 2。 */
 export class TaskConfigError extends Error {}
 
+/** 解析 task 与 service 共用的 OpenAI 兼容模型配置。 */
+export function parseModelConfig(
+  models: unknown, modelKey: string, fallbackApiKey?: unknown,
+): TaskConfig['model'] {
+  const model = object(object(models, 'models.models')[modelKey], 'model ' + modelKey);
+  const provider = requiredText(model.provider, 'model.provider').toLowerCase();
+  if (provider !== 'openai' && provider !== 'vllm') {
+    throw new TaskConfigError('Unsupported model provider for the DSH runner: ' + provider);
+  }
+  const baseURL = requiredText(model.base_url, 'model.base_url');
+  if (!URL.canParse(baseURL) || !['http:', 'https:'].includes(new URL(baseURL).protocol)) {
+    throw new TaskConfigError('model.base_url must be an HTTP(S) URL');
+  }
+  return {
+    name: requiredText(model.model, 'model.model'),
+    baseURL,
+    apiKey: text(model.api_key || fallbackApiKey, 'model.api_key', 'not-needed'),
+    contextWindow: model.context_length == null ? undefined
+      : positiveInteger(model.context_length, 'model.context_length'),
+  };
+}
+
 function object(value: unknown, field: string): ConfigObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TaskConfigError(field + ' must be an object');
@@ -128,15 +150,9 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     text(task.model, 'task.model') || app.LLM_DEFAULT_MODEL || models.default_model || env.LLM_DEFAULT_MODEL,
     'task.model or models.default_model',
   );
-  const model = object(object(models.models, 'models.models')[modelKey], 'model ' + modelKey);
-  const provider = requiredText(model.provider, 'model.provider').toLowerCase();
-  if (provider !== 'openai' && provider !== 'vllm') {
-    throw new TaskConfigError('Unsupported model provider for the DSH task runner: ' + provider);
-  }
-  const baseURL = requiredText(model.base_url, 'model.base_url');
-  if (!URL.canParse(baseURL) || !['http:', 'https:'].includes(new URL(baseURL).protocol)) {
-    throw new TaskConfigError('model.base_url must be an HTTP(S) URL');
-  }
+  const model = parseModelConfig(
+    models.models, modelKey, app.LLM_OPENAI_API_KEY || env.LLM_OPENAI_API_KEY || env.OPENAI_API_KEY,
+  );
 
   const skillsDir = resolve(workspace, text(task.skills_dir, 'task.skills_dir', 'skills'));
   const skillNames = [...new Set(stringList(task.skill_names, 'task.skill_names'))];
@@ -183,13 +199,6 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     mcpToolNames: selectedTools,
     mcpConfigPath,
     isDiosEventPublishingEnabled: diosEvents === 'true',
-    model: {
-      name: requiredText(model.model, 'model.model'),
-      baseURL,
-      apiKey: text(model.api_key || app.LLM_OPENAI_API_KEY || env.LLM_OPENAI_API_KEY || env.OPENAI_API_KEY,
-        'model.api_key', 'not-needed'),
-      contextWindow: model.context_length == null ? undefined
-        : positiveInteger(model.context_length, 'model.context_length'),
-    },
+    model,
   };
 }

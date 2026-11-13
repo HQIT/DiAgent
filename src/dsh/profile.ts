@@ -10,6 +10,17 @@ const disabledRows = [
   'tool-office', 'skill-office', 'agent-instructions',
 ];
 
+/** 使用本次运行选中的模型配置生成 DSH 的 OpenAI 兼容路由。 */
+export function modelProfileRow(model: TaskConfig['model']): object {
+  return { id: 'llm-pi-ai', config: { providers: { 'diagent-model': {
+    apiKeyEnv: 'DIAGENT_MODEL_API_KEY',
+    api: 'openai-completions',
+    baseURL: model.baseURL,
+    compat: { supportsDeveloperRole: false, maxTokensField: 'max_tokens' },
+    models: [{ id: model.name, contextWindow: model.contextWindow }],
+  } } } };
+}
+
 async function skillRoots(config: TaskConfig, home: string): Promise<string[]> {
   if (config.skillNames.length === 0) return [config.skillsDir];
 
@@ -126,13 +137,7 @@ export async function writeTaskProfile(config: TaskConfig, home: string, runDire
       // 旧 shell 超时必须终止命令，底层 Bash 工具不能转入后台。
       { id: 'tool-bash', config: { promoteOnTimeout: false } },
     ] : []),
-    { id: 'llm-pi-ai', config: { providers: { 'diagent-model': {
-      apiKeyEnv: 'DIAGENT_MODEL_API_KEY',
-      api: 'openai-completions',
-      baseURL: config.model.baseURL,
-      compat: { supportsDeveloperRole: false, maxTokensField: 'max_tokens' },
-      models: [{ id: config.model.name, contextWindow: config.model.contextWindow }],
-    } } } },
+    modelProfileRow(config.model),
   ];
   // JSON 是 YAML 的子集，序列化可保留路径、提示词等字段里的换行和引号。
   await writeFile(file, JSON.stringify([...rows, { insert: plugins }]), { mode: 0o600 });

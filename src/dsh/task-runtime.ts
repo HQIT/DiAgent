@@ -19,9 +19,24 @@ export async function runDshTask(
   signal: AbortSignal,
   log: (message: string) => void,
 ): Promise<string> {
+  return runDshTurn(config, home => writeTaskProfile(config, home, runDirectory), signal, log, {
+    DIOS_API: process.env.DIOS_API || 'http://backend:8000',
+    DIAGENT_EVENT_ACCESS_TOKEN: process.env.DIAGENT_EVENT_ACCESS_TOKEN ?? '',
+    GIT_PLATFORM_TOKEN: process.env.GIT_PLATFORM_TOKEN ?? '',
+  });
+}
+
+/** 启动并收尾一次独立 DSH 会话，由调用入口提供本次运行的 profile。 */
+export async function runDshTurn(
+  config: Pick<TaskConfig, 'workspace' | 'model' | 'prompt' | 'stepLimit'>,
+  writeProfile: (home: string) => Promise<string>,
+  signal: AbortSignal,
+  log: (message: string) => void,
+  taskEnv?: Pick<NodeJS.ProcessEnv, 'DIOS_API' | 'DIAGENT_EVENT_ACCESS_TOKEN' | 'GIT_PLATFORM_TOKEN'>,
+): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'diagent-dsh-'));
   try {
-    const patch = await writeTaskProfile(config, home, runDirectory);
+    const patch = await writeProfile(home);
     signal.throwIfAborted();
     await using harness = new DeepSeekHarness({
       dshHome: home,
@@ -33,13 +48,12 @@ export async function runDshTask(
       processCwd: config.workspace,
       env: {
         ...process.env,
-        // 固定 DiOS 连接配置，防止 DSH 从任务工作区的 .env 补入缺失值。
-        DIOS_API: process.env.DIOS_API || 'http://backend:8000',
-        DIAGENT_EVENT_ACCESS_TOKEN: process.env.DIAGENT_EVENT_ACCESS_TOKEN ?? '',
+        // 空值也显式传递，阻止无工具 Chat 和工作区 .env 注入这些任务凭据。
+        DIOS_API: taskEnv?.DIOS_API ?? '',
+        DIAGENT_EVENT_ACCESS_TOKEN: taskEnv?.DIAGENT_EVENT_ACCESS_TOKEN ?? '',
         DIAGENT_MODEL_API_KEY: config.model.apiKey,
-        // 空值也显式传递，避免任务工作区的 .env 成为 Git 凭据来源。
-        GIT_PLATFORM_TOKEN: process.env.GIT_PLATFORM_TOKEN ?? '',
-        DSH_PERMISSION_MODE: 'workspace-write',
+        GIT_PLATFORM_TOKEN: taskEnv?.GIT_PLATFORM_TOKEN ?? '',
+        DSH_PERMISSION_MODE: taskEnv ? 'workspace-write' : 'read-only',
         DSH_TELEMETRY_MODE: 'DISABLED',
         DSH_MAX_TOKENS_AS_SUCCESS: 'false',
       },
