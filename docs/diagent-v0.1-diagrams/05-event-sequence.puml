@@ -1,0 +1,50 @@
+@startuml
+title 05  事件发布 · DSH 插件与 DiOS 路由
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+skinparam sequence {
+    ParticipantBackgroundColor #EAF2FF
+    ParticipantBorderColor #7595B4
+    LifeLineBorderColor #94A9BF
+    GroupBackgroundColor #EDF6F3
+    GroupBorderColor #8EADA2
+    ReferenceBackgroundColor #EDF6F3
+    ReferenceBorderColor #8EADA2
+}
+hide footbox
+participant "DSH Agent 循环" as Agent
+participant "HQIT publish_event 插件" as Plugin
+participant "DiOS 事件入口" as OS
+participant "DiOS 路由与调度" as Dispatch
+participant "目标 DiAgent 容器" as Next
+
+Agent -> Plugin : event_type, source, subject, data
+Plugin -> OS : 读取事件目录与来源规则
+OS --> Plugin : 事件类型与来源规则
+alt 插件检查通过
+    Plugin -> OS : POST /api/os/events/manual
+    OS -> Dispatch : 匹配订阅并处理派发
+    opt 策略允许且命中订阅
+        Dispatch -> Next : 经 A2A 发起 task / service
+    end
+    Dispatch --> OS : 事件状态与派发结果
+    OS --> Plugin : event_id、状态与匹配信息
+    Plugin --> Agent : 返回发布结果
+else 规则拒绝或请求失败
+    Plugin --> Agent : 可诊断的拒绝 / 失败结果
+end
+note over Plugin, Dispatch
+  事件状态随工具结果返回。
+  目标任务的执行结果由 DiOS 单独跟踪。
+end note
+@enduml

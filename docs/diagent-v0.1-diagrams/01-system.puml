@@ -1,0 +1,40 @@
+@startuml
+title 01  系统黑盒 · DiOS 与 DiAgent
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+left to right direction
+actor "使用者 / 外部事件源" as Caller
+node "部署环境" as Host #F0F4F9 {
+  component "DiOS" as OS #E0EDFF
+  note bottom of OS
+    注册 Agent 与资源
+    事件路由、调度与授权
+    保存 Chat 历史、运行状态及产物索引
+  end note
+  node "Docker Engine" as Docker #F2F4F8 {
+    node "DiAgent\n运行中的容器" as Agent #E7F5EF
+  }
+  artifact "DiAgent 镜像\ntask / service 入口" as Image #F4F7FD
+  database "Agent 工作区" as Work #FFFFFF
+}
+cloud "模型端点 / MCP 工具" as External #FFFFFF
+
+Caller --> OS : Chat / Webhook / A2A
+OS --> Docker : 启动与检查容器\n读取退出状态与日志
+Image ..> Agent : «instantiate»
+OS --> Agent : service · HTTP / SSE
+OS --> Work : task · 写任务 JSON\n读取结果及登记产物
+Agent --> Work : 读取配置、访问文件\n写 task_result.md / task.log
+Agent --> External : 模型与获准工具调用
+Agent --> OS : MCP 网关 / publish_event
+@enduml

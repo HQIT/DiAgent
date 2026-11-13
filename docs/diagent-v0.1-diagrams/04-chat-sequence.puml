@@ -1,0 +1,67 @@
+@startuml
+title 04  Chat · 会话、SSE 和人工审批
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+skinparam sequence {
+    ParticipantBackgroundColor #EAF2FF
+    ParticipantBorderColor #7595B4
+    LifeLineBorderColor #94A9BF
+    GroupBackgroundColor #EDF6F3
+    GroupBorderColor #8EADA2
+    ReferenceBackgroundColor #EDF6F3
+    ReferenceBorderColor #8EADA2
+}
+hide footbox
+actor "用户" as User
+participant "DiOS Chat" as OS
+database "DiOS DB" as DB
+participant "TS HTTP / SSE" as Http
+participant "运行模块 + SDK" as Run
+participant "DSH Agent / Session" as DSH
+participant "工具 / DiOS CLI" as Tool
+
+User -> OS : 发送消息
+OS -> DB : 读取展示历史，保存用户消息
+OS -> Http : POST /v1/chat/completions\n现有 messages + 拟透传的 session_id
+Http -> Run : 解析角色、工具选择与会话
+Run -> DSH : 新建 / 恢复 Session，提交本轮输入
+loop 会话执行期间
+    opt 有获准工具
+        DSH -> Tool : 执行 Shell / MCP / HQIT 工具
+        Tool --> DSH : 结果可包含 pending_hil
+    end
+    DSH -->> Run : 文本或工具事件
+    opt 请求 SSE
+        Run -->> Http : 映射本轮事件
+        Http -->> OS : 文本增量或 tool_call
+        opt DiOS CLI 返回待审批
+            OS -> OS : pending_hil 映射为 hil
+        end
+        OS -->> User : 更新回答、工具或审批提示
+    end
+end
+DSH --> Run : 最终回答与终态
+Run --> Http : 返回运行结果
+alt 非流式
+    Http --> OS : chat.completion JSON
+    OS --> User : 最终回答
+else SSE
+    Http --> OS : finish chunk / [DONE]
+    OS --> User : 流结束
+end
+OS -> DB : 保存展示用回答
+note over Run, DSH
+  拟由 DSH 保存模型上下文
+  文本增量粒度和旧历史接续待 PoC
+end note
+@enduml

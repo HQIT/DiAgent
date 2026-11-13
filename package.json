@@ -1,0 +1,30 @@
+{
+  "name": "diagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "task:dsh": "node dist/task/main.js",
+    "service:dsh": "node dist/service/server.js",
+    "test:service": "npm run build && node --test tests/dsh-service.test.mjs",
+    "test:task": "npm run build && node --test --test-concurrency=1 tests/dsh-task.test.mjs tests/publish-event.test.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-shell-env": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "yaml": "2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.1",
+    "typescript": "5.9.3"
+  }
+}

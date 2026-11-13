@@ -1,0 +1,51 @@
+@startuml
+title 02  DiAgent 内部 · UML 组件与部署
+skinparam backgroundColor #F9FBFE
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontColor #14273E
+skinparam ArrowColor #446483
+skinparam Shadowing false
+skinparam roundcorner 10
+skinparam packageStyle rectangle
+skinparam componentStyle uml2
+skinparam componentBorderColor #7595B4
+skinparam nodeBorderColor #7896B2
+skinparam databaseBorderColor #7896B2
+skinparam artifactBorderColor #7896B2
+top to bottom direction
+component "DiOS" as OS #E0EDFF
+node "宿主机 Docker Engine" as Docker #F2F4F8
+node "DiAgent 容器 · task 或 service 实例" as Box #F0F5FC {
+  package "TypeScript 主进程" as TS #EFF5FE {
+    component "Task 入口\n配置、结果文件与退出码" as Task #E0EDFF
+    component "HTTP 入口\nChat / SSE 与健康检查" as Http #E0EDFF
+    component "配置解析\n模型、角色与工具权限" as Config #FFFFFF
+    component "DSH 运行模块\n启动、会话、事件与收尾" as Run #FFFFFF
+    component "官方 TS SDK" as SDK #FFFFFF
+    Task -[hidden]right- Http
+    Task --> Config
+    Http --> Config
+    Config --> Run
+    Run --> SDK
+  }
+  artifact "Profile 与覆盖项" as Profile #FFF6E6
+  package "DSH 子进程" as Child #EDF7F3 {
+    component "Agent 循环\n模型、Session、子 Agent" as Core #DDF2E9
+    component "DSH 工具层\nSkills、文件、Shell、MCP" as Tools #DDF2E9
+    component "HQIT 插件\npublish_event" as HQ #DDF2E9
+    Core --> Tools
+    Core --> HQ
+    Tools -[hidden]right- HQ
+  }
+}
+folder "挂载的 /workspace" as Work #FFFFFF
+OS -right-> Docker : 管理容器
+Docker ..> Box : 创建与停止
+OS --> Task : TASK_CONFIG
+OS --> Http : HTTP / SSE
+Config ..> Profile : 生成覆盖项
+Profile ..> Core : 启动时装配
+SDK <--> Core : stdio JSON-RPC
+Tools --> Work : 文件与命令
+Task ..> Work : 结果与日志
+@enduml
