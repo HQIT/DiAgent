@@ -13,7 +13,7 @@ npm run test:task
 
 本地运行时，先执行 `npm run build`，设置 `TASK_CONFIG` 指向一次性任务的 JSON/YAML 文件，再执行 `npm run task:dsh`。试点 Dockerfile 位于 `docker/agent-task-dsh/Dockerfile`，可用 `docker build -f docker/agent-task-dsh/Dockerfile -t diagent-task:dsh-dev .` 单独构建。现有 Compose 仍使用 Python 镜像。
 
-试点支持 OpenAI-compatible 模型、指定 Skills 与 Streamable HTTP MCP，保留配置的结果文件名和任务退出码。当前温度使用模型路由默认值。具名子 Agent 的存量配置、独立触发器及 Chat/SSE 按兼容基线验收。 [v0.1 兼容基线](docs/2026-11-diagent-v0.1-compatibility-baseline.md)
+试点支持 OpenAI-compatible 模型、指定 Skills 与 Streamable HTTP MCP，保留配置的结果文件名和任务退出码。一次性任务的每轮模型请求使用 `task.temperature`，允许显式设置为 `0`，省略时沿用旧版默认值 `0.7`。具名子 Agent 的存量配置、独立触发器及 Chat/SSE 按兼容基线验收。 [v0.1 兼容基线](docs/2026-11-diagent-v0.1-compatibility-baseline.md)
 
 一次性任务的 `task.tools` 使用 MCP 服务公布的原始工具名。省略时使用所有已发现的 MCP 工具，空数组关闭 MCP，非空数组从任务启动时发现的工具中选取。文件等内置工具仍按任务配置提供。非空名单要求服务名和工具名能唯一转换成 DSH 工具名，存在歧义或需归一化的配置会报错。DiOS 网关仍负责上游工具授权。
 

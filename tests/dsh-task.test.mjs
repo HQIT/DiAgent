@@ -173,7 +173,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     assert.match(invalidBudget.output, /task\.max_tool_rounds must be a positive integer/);
 
     const requestCount = modelRequests.length;
-    const selected = await run('selected-mcp', 'selected', 'mcp.json', { tools: ['lookup'] });
+    const selected = await run('selected-mcp', 'selected', 'mcp.json', { tools: ['lookup'], temperature: 0 });
     assert.equal(selected.code, 0, selected.output);
     assert.equal(selected.result, 'pilot-ok');
     const visibleTools = modelRequests[requestCount].tools.map(tool => tool.function.name);
@@ -181,6 +181,9 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     assert.ok(visibleTools.includes('read'), 'Selecting MCP tools must preserve the built-in file reader');
     assert.ok(!mcpRequests.some(request => request.name === 'unselected'),
       'Calling a hidden tool must not reach the MCP server');
+    assert.equal(modelRequests[0].temperature, 0.7, 'Omitting temperature must preserve the legacy task default');
+    assert.deepEqual(modelRequests.slice(requestCount).map(request => request.temperature), [0, 0],
+      'Explicit zero temperature must be sent for the initial request and tool continuation');
 
     const ambiguous = await run('selected-mcp', 'ambiguous', 'mcp.json', { tools: ['lookup_000000000000'] });
     assert.notEqual(ambiguous.code, 0);

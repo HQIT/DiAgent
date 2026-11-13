@@ -73,6 +73,11 @@ export async function writeTaskProfile(config: TaskConfig, home: string, runDire
   const skills = await skillRoots(config, home);
   const mcpPlugins = await mcpRows(config.mcpConfigPath);
   const plugins: object[] = [...mcpPlugins];
+  plugins.push({
+    id: 'diagent-task-temperature',
+    name: fileURLToPath(new URL('./plugins/task-temperature.js', import.meta.url)),
+    config: { temperature: config.temperature },
+  });
   if (mcpPlugins.length > 0 && config.mcpToolNames.length > 0) {
     const serverNames = mcpPlugins.map(plugin => plugin.config.serverName);
     // DSH 对原名做拼接和有损归一化。只接受能唯一对应原名的配置。

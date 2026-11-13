@@ -15,7 +15,7 @@ export interface TaskConfig {
   logFile: string;
   stepLimit: number;
   maxToolRounds?: number;
-  temperature?: number;
+  temperature: number;
   skillsDir: string;
   skillNames: string[];
   mcpToolNames: string[];
@@ -177,7 +177,7 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     stepLimit: positiveInteger(task.recursion_limit ?? 100, 'task.recursion_limit'),
     maxToolRounds: task.max_tool_rounds == null
       ? undefined : positiveInteger(task.max_tool_rounds, 'task.max_tool_rounds'),
-    temperature: temperature ?? undefined,
+    temperature: temperature ?? 0.7,
     skillsDir,
     skillNames,
     mcpToolNames: selectedTools,

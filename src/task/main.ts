@@ -30,11 +30,6 @@ async function main(): Promise<void> {
   process.once('SIGTERM', interrupt);
   const signal = AbortSignal.any([stop.signal, AbortSignal.timeout(timeout)]);
   const events: string[] = [];
-  if (config.temperature !== undefined) {
-    const notice = '[config] task.temperature is not mapped yet; using the model route default';
-    events.push(notice);
-    console.warn(notice);
-  }
 
   try {
     const result = await runDshTask(config, runDirectory, signal, message => events.push(message));

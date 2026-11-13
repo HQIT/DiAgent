@@ -70,7 +70,7 @@ flowchart LR
 | 范围 | 现有语义及迁移要求 |
 | --- | --- |
 | Task 输入 | `TASK_CONFIG` 必填。DiOS 用 JSON，独立入口也读 YAML。当前稳定样例为顶层 `task` 对象与可选 `models/app`。`models.default_model`、`models.models`、`task.model` 和 `app.LLM_DEFAULT_MODEL` 决定模型解析。文档声明的 flat 形式与 `task` 字符串字段冲突，解析器会将同名键作为嵌套对象处理。fixture 先使用真实结构。 |
-| Task 执行配置 | `task.task/system_prompt/temperature/workspace/skills_dir/skill_names/mcp_config_path/tools/subagents` 和运行预算。MCP 路径省略时尝试默认配置，显式空字符串关闭，提供相对路径时按 workspace 解析。 |
+| Task 执行配置 | `task.task/system_prompt/temperature/workspace/skills_dir/skill_names/mcp_config_path/tools/subagents` 和运行预算。新版一次性任务的每轮模型请求使用配置温度，省略时沿用旧版默认值 `0.7`，支持显式 `0`。MCP 路径省略时尝试默认配置，显式空字符串关闭，提供相对路径时按 workspace 解析。 |
 | Task 输出配置 | `OUTPUT_DIR` 优先于 `task.output_dir`；配置中的相对目录按 workspace 解析；都缺省时用当前目录。每次运行在根目录下另建子目录。文件名由 `output.log_file/result_file` 控制，独立默认结果 `task_result.txt`，DiOS 指定 `task_result.md`。 |
 | Task 触发 | DiOS 下发 `once`。独立版还有 cron 和 interval，环境变量 `TRIGGER_MODE/CRON/INTERVAL_SECONDS` 可覆盖。现有周期模式先执行再等待。 |
 | Service 环境 | `AGENT_WORKSPACE/LLM_MODELS_CONFIG_PATH/LLM_DEFAULT_MODEL/MCP_CONFIG_PATH/AGENT_SYSTEM_PROMPT/SKILLS_DIR/DIOS_API` 与业务环境。DiOS 启容器时写入模型及 MCP 文件，运行中的配置变更如何生效需明确。 |
