@@ -6,7 +6,9 @@
 
 使用 Node.js 24.9 或更高版本。执行 `npm run build` 后运行 `npm run service:dsh`，服务在端口 `8000` 提供 `GET /health`，响应为 `{"status":"healthy"}`。执行 `npm run test:service` 验证 HTTP 契约。
 
-`POST /v1/chat/completions` 支持非流式、无工具的单轮文本问答，返回 `choices[0].message.content`。模型从 `LLM_MODELS_CONFIG_PATH` 指定的 YAML 加载，工作区由 `AGENT_WORKSPACE` 指定。请求可指定模型，也可使用部署配置的默认模型或唯一已配置模型。省略系统消息时使用 `AGENT_SYSTEM_PROMPT`。常驻服务镜像、多轮历史、工具选择和 SSE 仍在迁移中。
+`POST /v1/chat/completions` 支持非流式、无工具的单轮文本问答，返回 `choices[0].message.content`。模型从 `LLM_MODELS_CONFIG_PATH` 指定的 YAML 加载，工作区由 `AGENT_WORKSPACE` 指定。请求可指定模型，也可使用部署配置的默认模型或唯一已配置模型。省略系统消息时使用 `AGENT_SYSTEM_PROMPT`。多轮历史、工具选择和 SSE 仍在迁移中。
+
+本机可用 `docker build --target service -f docker/agent-task-dsh/Dockerfile -t diagent-service:dsh-dev .` 构建常驻镜像。DiOS 通过 `DIOS_DIAGENT_SERVICE_IMAGE` 选择该镜像，并挂载工作区和模型配置。一次性任务仍使用同一 Dockerfile 的默认构建目标。
 
 ## TypeScript / DSH 一次性任务试点
 
