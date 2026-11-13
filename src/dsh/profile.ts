@@ -73,6 +73,13 @@ export async function writeTaskProfile(config: TaskConfig, home: string, runDire
   const skills = await skillRoots(config, home);
   const mcpPlugins = await mcpRows(config.mcpConfigPath);
   const plugins: object[] = [...mcpPlugins];
+  // DSH 在原生 Windows 上提供 PowerShell，Linux 镜像才是本工具的交付环境。
+  if (process.platform === 'linux') {
+    plugins.push({
+      id: 'diagent-legacy-shell',
+      name: fileURLToPath(new URL('./plugins/legacy-shell.js', import.meta.url)),
+    });
+  }
   plugins.push({
     id: 'diagent-task-temperature',
     name: fileURLToPath(new URL('./plugins/task-temperature.js', import.meta.url)),
@@ -114,6 +121,11 @@ export async function writeTaskProfile(config: TaskConfig, home: string, runDire
       personaPrefix: config.systemPrompt + '\n\n本次任务的文件产物请写到：' + runDirectory,
     } },
     { id: 'skill-filesystem', config: { includeDefaultRoots: false, customSkillDirs: skills, watch: false } },
+    ...(process.platform === 'linux' ? [
+      { id: 'bash-sandbox', config: { maxTimeoutMs: 1_800_000 } },
+      // 旧 shell 超时必须终止命令，底层 Bash 工具不能转入后台。
+      { id: 'tool-bash', config: { promoteOnTimeout: false } },
+    ] : []),
     { id: 'llm-pi-ai', config: { providers: { 'diagent-model': {
       apiKeyEnv: 'DIAGENT_MODEL_API_KEY',
       api: 'openai-completions',

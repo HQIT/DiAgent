@@ -23,6 +23,8 @@ npm run test:task
 
 可选的 `task.max_tool_rounds` 为正整数。模型在同一步尝试一个或多个工具调用时，共用一个轮次额度。超额的调用会在执行前被拒绝，模型仍可根据已有结果完成回答。模型若持续尝试，任务仍受 `task.recursion_limit` 和运行超时限制。
 
+Linux 一次性任务提供旧名 `shell(command, cwd?, timeout?)`。相对工作目录以任务工作区为起点，超时单位为秒，默认 300 秒、最长 1800 秒。命令由 DSH Bash 前台执行，返回旧版的 `exit_code`、`stdout` 和 `stderr` 文本。命令使用 DSH 的非登录 Bash、权限策略、环境变量过滤和输出截尾规则。依赖登录环境、特定输出截断行为或注入凭据的存量调用仍须单独验证。
+
 ## 特性
 
 - **多模型支持**: 支持 Ollama、vLLM、OpenAI 及兼容 API 的 LLM 提供商

@@ -71,17 +71,25 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const toolResults = body.messages.filter(message => message.role === 'tool');
     const isBudgetTask = body.messages.some(message => message.role === 'user' && message.content === 'tool-budget');
     const isSelectionTask = body.messages.some(message => message.role === 'user' && message.content === 'selected-mcp');
+    const shellPrompt = body.messages.find(message => message.role === 'user' && message.content.startsWith('legacy-shell'));
+    const isShellTask = Boolean(shellPrompt);
     const hasToolResult = toolResults.length > 0;
     const toolCall = { index: 0, id: 'call-smoke', type: 'function',
       function: { name: 'mcp__smoke__lookup', arguments: '{}' } };
     const needsTool = isBudgetTask ? toolResults.length < 3 : !hasToolResult;
-    const toolCalls = isBudgetTask && !hasToolResult
+    const toolCalls = isShellTask ? [{ index: 0, id: 'call-legacy-shell', type: 'function',
+      function: { name: 'shell', arguments: JSON.stringify({
+        command: shellPrompt.content === 'legacy-shell-timeout' ? 'sleep 10'
+          : "test -f SKILL.md || exit 9; printf 'shell-stdout'; printf 'shell-stderr' >&2; exit 7",
+        ...(shellPrompt.content === 'legacy-shell' ? { cwd: 'skills/smoke-skill' } : {}),
+        timeout: shellPrompt.content === 'legacy-shell-timeout' ? 1 : 5,
+      }) } }] : isBudgetTask && !hasToolResult
       ? [toolCall, { ...toolCall, index: 1, id: 'call-smoke-second' }]
       : isSelectionTask ? [toolCall, { index: 1, id: 'call-unselected', type: 'function',
         function: { name: 'mcp__smoke__unselected', arguments: '{}' } }]
       : [{ ...toolCall, id: isBudgetTask ? 'call-smoke-next-round' : toolCall.id }];
     const delta = needsTool ? { tool_calls: toolCalls } : {
-      content: isBudgetTask ? toolResults.map(message => message.content).join('\n') : 'pilot-ok',
+      content: isBudgetTask || isShellTask ? toolResults.map(message => message.content).join('\n') : 'pilot-ok',
     };
     const base = { id: 'chatcmpl-smoke', object: 'chat.completion.chunk', created: 1, model: 'smoke-model' };
     response.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -188,6 +196,17 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     const ambiguous = await run('selected-mcp', 'ambiguous', 'mcp.json', { tools: ['lookup_000000000000'] });
     assert.notEqual(ambiguous.code, 0);
     assert.match(ambiguous.output + (ambiguous.log ?? ''), /alias ambiguity/);
+
+    if (process.platform === 'linux') {
+      const shellRequest = modelRequests.length;
+      const shell = await run('legacy-shell', 'shell', '', { max_tool_rounds: 1 });
+      assert.equal(shell.code, 0, shell.output);
+      assert.ok(modelRequests[shellRequest].tools.some(tool => tool.function.name === 'shell'));
+      assert.equal(shell.result, 'exit_code: 7\nstdout:\nshell-stdout\nstderr:\nshell-stderr');
+      const timedOut = await run('legacy-shell-timeout', 'shell-timeout', '');
+      assert.equal(timedOut.code, 0, timedOut.output);
+      assert.equal(timedOut.result, 'exit_code: -1\nstdout:\n\nstderr:\ncommand timed out after 1s');
+    }
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

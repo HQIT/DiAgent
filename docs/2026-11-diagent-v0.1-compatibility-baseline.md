@@ -58,7 +58,7 @@ flowchart LR
 | MCP | 读取多服务器 JSON，发现工具，按名称选择。task 支持配置相对 workspace、stdio 的相对 `cwd`，工具失败可返回模型可读错误。DiOS enforce 为支持的 task `streamable_http` 下发授权。 | 至少验真实 `streamable_http` 连接、headers、工具发现与调用、允许/拒绝/不可用。已用的 stdio/SSE 等传输列入迁移清单。失败保持原授权边界。 |
 | 工具选择 | service 只启用选中的 MCP 工具，`shell/publish_event` 需显式选中。task 默认加入这两个内置工具。主 task 的 `tools=None` 选全部 MCP，`tools=[]` 在代码中选空。 | 按模式与配置生成实际工具集合。验证缺省、空列表、具名选择、内置工具与禁用工具。工具可见性以模型收到的 schema 为准。 |
 | Skills | task 按 `skills_dir/skill_names` 装配，名单为空或未给时使用整个目录。service 只有在选到工具时才进入 Agent 路径，该路径使用共享技能目录。DiOS Chat 仅根据 Skills 是否为空追加工具 ID，未传具体 Skill 名单。 | 现有 `SKILL.md` 与附属文件可用。验证具名 Skill 真正加载，工具权限仍由实际运行配置决定。 |
-| 文件与 Shell | Deep Agents 提供文件读写、编辑、搜索等工具。`shell(command,cwd?,timeout?)` 在容器内运行 Bash，默认 `/workspace`、300 秒，返回退出码和有界 stdout/stderr。 | 文件工具、Shell 共用工作区。验证 cwd、读写权限、超时、退出码和输出。若 DSH 原生工具名或结果格式不同，兼容现有 Skill 和 DiOS 依赖的 `shell` 接口。 |
+| 文件与 Shell | Deep Agents 提供文件读写、编辑、搜索等工具。`shell(command,cwd?,timeout?)` 在容器内运行登录 Bash，默认 `/workspace`、300 秒，返回退出码和有界 stdout/stderr。 | Linux task 提供兼容名称、参数和结果格式，命令由 DSH Bash 前台执行。已验证相对工作目录、非零退出码、stdout/stderr 和超时。DSH 使用非登录 Bash，并过滤部分子进程环境变量。依赖登录环境、输出截断顺序或注入凭据的存量调用，以及 service 的工具选择，仍须验收。 |
 | `publish_event` | 输入 `event_type/source/subject/data`。查事件目录、source pattern，再 POST DiOS `/api/os/events/manual`，返回事件 ID、状态或拒绝/失败文本。 | HQIT 插件保留工具名、参数和成功/拒绝行为。验证一次发布和一条拒绝，并在实际使用的 DiOS 鉴权模式下验收。路由仍由 DiOS 管理。 |
 | 内部子 Agent | task 可配置具名子 Agent、描述、角色、模型、工具、MCP、Skills 和可选任务说明。主子 Agent 收到同一产物目录提示。独立样例使用 researcher、writer、reviewer，DiOS 可下发 subagents。 | 核实存量调用。存在依赖时纳入 task 兼容验收，验证角色、工具授权、Skill 和产物。新的多 Agent 共用容器方案列为后续方向。 |
 | 日志与产物 | task 在输出根下为每次运行建子目录，写结果、过程日志和附加文件。DiOS 消费 Markdown 与容器日志。 | 保持结果路径及文件编码，日志能定位模型、失败工具与终态。验证附加文件和两次运行各自结果。观察中断后避免重复调用有副作用的工具。 |
