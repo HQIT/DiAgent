@@ -1,4 +1,4 @@
-/** 管理一次任务的 DSH 子进程，按 SDK 事件判断实际终态。 */
+/** 封装一次性任务的 DSH 会话和子进程生命周期，将运行终态交回任务入口。 */
 import { DeepSeekHarness, validatedSessionEvent } from '@deepseek-ai/dsh-sdk-client';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -7,7 +7,12 @@ import { join } from 'node:path';
 import type { TaskConfig } from '../task/config.js';
 import { writeTaskProfile } from './profile.js';
 
-/** 执行一次任务，只有收到成功终态才返回答案，并在退出前释放子进程。 */
+/**
+ * 在配置的工作区启动独立 DSH 子进程，完成或取消后清理临时配置。
+ * @param runDirectory - 本轮文件产物目录，由调用方创建。
+ * @returns 根会话成功结束时的最后一条助手文本。
+ * @throws 任务取消、超出步数、启动失败或根会话没有成功结束。
+ */
 export async function runDshTask(
   config: TaskConfig,
   runDirectory: string,
@@ -47,7 +52,7 @@ export async function runDshTask(
       const sessionId = randomUUID();
       const subscription = harness.client.subscribeSessionTree(sessionId);
       try {
-        // 用低层 prompt 提交原始任务，避免以 / 开头的文本被路由成 SDK 命令。
+        // 用协议层 prompt 保留原始任务文本，避免 SDK 把开头的 / 当成命令。
         await harness.client.prompt(sessionId, [{ type: 'text', text: config.prompt }]);
         const finished = harness.client.request('session/wait', { sessionId }).then(() => null);
         let steps = 0;

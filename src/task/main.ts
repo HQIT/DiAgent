@@ -1,4 +1,4 @@
-/** 一次性任务命令入口，按 DiOS 约定落盘并设置进程退出状态。 */
+/** 一次性任务命令入口。调度器通过结果文件和进程退出码回收执行状态。 */
 import { appendFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadTaskConfig, TaskConfigError } from './config.js';
@@ -10,11 +10,13 @@ function errorMessage(error: unknown): string {
 
 async function main(): Promise<void> {
   const config = await loadTaskConfig(process.env);
+  // 一次性任务默认限时 30 分钟。Node.js 定时器的上限为有符号 32 位整数。
   const timeout = Number(process.env.DIAGENT_TASK_TIMEOUT_MS ?? 1_800_000);
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2_147_483_647) {
     throw new TaskConfigError('DIAGENT_TASK_TIMEOUT_MS must be a positive timer interval');
   }
 
+  // 每次运行创建独立目录，同一输出根下的历史结果可以保留。
   await mkdir(config.outputDir, { recursive: true });
   const runDirectory = await mkdtemp(join(config.outputDir, 'run-'));
   const logPath = join(runDirectory, config.logFile);

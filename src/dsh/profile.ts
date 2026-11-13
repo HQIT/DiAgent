@@ -1,4 +1,4 @@
-/** 生成一次运行的 DSH 配置，避免任务之间共享工具注册和凭据状态。 */
+/** 生成任务私有的 DSH profile 补丁，限定本次运行的模型、Skills 和工具。 */
 import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,7 +63,12 @@ async function mcpRows(path: string | undefined): Promise<object[]> {
   });
 }
 
-/** 将任务的工具和模型配置写到私有临时目录，返回启动时要加载的配置路径。 */
+/**
+ * 在本次运行的 DSH home 写入 profile 补丁。
+ * @param home - 由调用方创建并清理的任务私有目录。
+ * @returns 启动 DSH 时加载的补丁路径。
+ * @throws TaskConfigError 指定的 Skill 不可用，或 MCP 配置无效。
+ */
 export async function writeTaskProfile(config: TaskConfig, home: string, runDirectory: string): Promise<string> {
   const skills = await skillRoots(config, home);
   const plugins = await mcpRows(config.mcpConfigPath);
@@ -88,7 +93,7 @@ export async function writeTaskProfile(config: TaskConfig, home: string, runDire
       models: [{ id: config.model.name, contextWindow: config.model.contextWindow }],
     } } } },
   ];
-  // JSON 可由 YAML 解析器读取。配置值始终按字面量传递，避免任务内容被解释为 Cordis 表达式。
+  // JSON 是 YAML 的子集，序列化可保留路径、提示词等字段里的换行和引号。
   await writeFile(file, JSON.stringify([...rows, { insert: plugins }]), { mode: 0o600 });
   return file;
 }

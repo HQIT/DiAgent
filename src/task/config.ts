@@ -1,10 +1,11 @@
-/** 解析 DiOS 的任务配置，兼容旧文件结构与环境变量。 */
+/** 将一次性任务文件和部署环境转换为 DSH 执行配置，保留 DiOS 的输入兼容性。 */
 import { readFile, stat } from 'node:fs/promises';
 import { basename, extname, isAbsolute, resolve } from 'node:path';
 import { parse } from 'yaml';
 
 type ConfigObject = Record<string, unknown>;
 
+/** 已校验的任务配置。路径按各字段的约定解析，事件工具开关由部署环境决定。 */
 export interface TaskConfig {
   prompt: string;
   systemPrompt: string;
@@ -86,7 +87,10 @@ async function readConfig(path: string): Promise<ConfigObject> {
   }
 }
 
-/** 读取一次性任务并校验已接入的配置；无法执行的显式选项会抛出 TaskConfigError。 */
+/**
+ * 从部署环境中的 `TASK_CONFIG` 读取一次性任务。
+ * @throws TaskConfigError 配置不可读、字段无效，或任务要求当前执行器尚未支持的行为。
+ */
 export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig> {
   const configPath = resolve(requiredText(env.TASK_CONFIG, 'TASK_CONFIG'));
   const config = await readConfig(configPath);
@@ -144,6 +148,7 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
   }
   const taskMcpPath = text(task.mcp_config_path, 'task.mcp_config_path');
   const defaultMcpPath = text(app.MCP_CONFIG_PATH ?? env.MCP_CONFIG_PATH, 'MCP_CONFIG_PATH');
+  // 显式空工具列表或空 MCP 路径表示关闭 MCP。省略时才允许使用部署默认路径。
   const mcpConfigPath = Array.isArray(task.tools) || task.mcp_config_path === '' ? undefined
     : taskMcpPath ? resolve(workspace, taskMcpPath)
     : defaultMcpPath ? resolve(defaultMcpPath) : undefined;

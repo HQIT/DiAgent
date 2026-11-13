@@ -1,4 +1,4 @@
-/** 注册 DiOS 事件发布工具，保留 Agent 可见的发布、拒绝和失败结果。 */
+/** 将模型的事件工具调用接到 DiOS。DiOS 负责审批、订阅匹配和派发。 */
 import { defineTool, type ToolsService } from '@deepseek-ai/dsh-tools';
 
 interface EventInput {
@@ -17,8 +17,8 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** 按 DiOS 来源规则匹配整个字符串。Python fnmatch 的通配符可跨越斜杠。 */
 function sourceMatches(source: string, pattern: string): boolean {
-  // DiOS 使用 fnmatch，* 和 ? 可以匹配来源里的斜杠。
   let expression = '';
   for (let index = 0; index < pattern.length; index += 1) {
     const character = pattern[index];
@@ -43,6 +43,7 @@ function sourceMatches(source: string, pattern: string): boolean {
     }
   }
   try {
+    // JavaScript 的 $ 可匹配末尾换行之前的位置，再检查后面没有字符。
     return new RegExp('^(?:' + expression + ')$(?!.)', 'su').test(source);
   } catch {
     // 反向字符范围等非法模式无法授权任何来源。
@@ -56,6 +57,7 @@ function redactDetail(detail: string, accessToken: string): string {
   return (accessToken ? detail.replaceAll(accessToken, '[redacted]') : detail).slice(0, 500);
 }
 
+/** 事件请求允许沿用基础地址的路径前缀。禁止重定向，避免凭据被转发到其他地址。 */
 async function requestJson(
   baseURL: URL, path: string, accessToken: string, signal: AbortSignal, body?: EventInput,
 ): Promise<unknown> {
@@ -68,6 +70,7 @@ async function requestJson(
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     redirect: 'error',
+    // 沿用原事件工具的预算，目录查询 20 秒，可能触发派发的发布请求 30 秒。
     signal: AbortSignal.any([signal, AbortSignal.timeout(body === undefined ? 20_000 : 30_000)]),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -85,6 +88,7 @@ async function requestJson(
   return payload;
 }
 
+/** 验证事件类型和来源后最多提交一次。发布结果返回给模型，取消由 DSH 处理。 */
 async function publishEvent(input: EventInput, signal: AbortSignal): Promise<string> {
   const accessToken = process.env.DIAGENT_EVENT_ACCESS_TOKEN?.trim() ?? '';
   try {
@@ -137,7 +141,7 @@ async function publishEvent(input: EventInput, signal: AbortSignal): Promise<str
 export const name = 'diagent-publish-event';
 export const inject = ['tools'];
 
-/** 在 DSH 进程中注册可由模型调用的 DiOS 工具。 */
+/** Cordis 加载此插件时，将事件工具注册到当前 DSH 进程的工具列表。 */
 export function apply(context: { tools: ToolsService }): void {
   context.tools.register(defineTool({
     name: 'publish_event',

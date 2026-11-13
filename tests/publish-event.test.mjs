@@ -1,3 +1,4 @@
+/** 通过真实 DSH 工具调用验证事件插件，本机服务模拟模型响应和 DiOS API。 */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtempDisposable, readFile, readdir, writeFile } from 'node:fs/promises';
