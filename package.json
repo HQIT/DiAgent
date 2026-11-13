@@ -12,6 +12,7 @@
     "test:task": "npm run build && node --test --test-concurrency=1 tests/dsh-task.test.mjs tests/publish-event.test.mjs"
   },
   "dependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
     "@deepseek-ai/dsh": "0.2.2-rc.1",
     "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.1",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.1",

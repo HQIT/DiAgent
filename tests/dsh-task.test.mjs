@@ -65,13 +65,21 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
       return;
     }
 
-    const hasToolResult = body.messages.some(message => message.role === 'tool');
+    const toolResults = body.messages.filter(message => message.role === 'tool');
+    const isBudgetTask = body.messages.some(message => message.role === 'user' && message.content === 'tool-budget');
+    const hasToolResult = toolResults.length > 0;
     const toolCall = { index: 0, id: 'call-smoke', type: 'function',
       function: { name: 'mcp__smoke__lookup', arguments: '{}' } };
-    const delta = hasToolResult ? { content: 'pilot-ok' } : { tool_calls: [toolCall] };
+    const needsTool = isBudgetTask ? toolResults.length < 3 : !hasToolResult;
+    const toolCalls = isBudgetTask && !hasToolResult
+      ? [toolCall, { ...toolCall, index: 1, id: 'call-smoke-second' }]
+      : [{ ...toolCall, id: isBudgetTask ? 'call-smoke-next-round' : toolCall.id }];
+    const delta = needsTool ? { tool_calls: toolCalls } : {
+      content: isBudgetTask ? toolResults.map(message => message.content).join('\n') : 'pilot-ok',
+    };
     const base = { id: 'chatcmpl-smoke', object: 'chat.completion.chunk', created: 1, model: 'smoke-model' };
     response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    for (const [part, finish] of [[{ role: 'assistant' }, null], [delta, null], [{}, hasToolResult ? 'stop' : 'tool_calls']]) {
+    for (const [part, finish] of [[{ role: 'assistant' }, null], [delta, null], [{}, needsTool ? 'tool_calls' : 'stop']]) {
       response.write('data: ' + JSON.stringify({
         ...base, choices: [{ index: 0, delta: part, finish_reason: finish }],
       }) + '\n\n');
@@ -89,7 +97,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     smoke: { transport: 'streamable_http', url: baseURL + '/mcp', headers: { Authorization: 'Bearer smoke-mcp' } },
   }));
 
-  async function run(prompt, label, mcpPath) {
+  async function run(prompt, label, mcpPath, taskOptions = {}) {
     const taskConfig = join(workspace, label + '.json');
     const outputRoot = join(workspace, label);
     await writeFile(taskConfig, JSON.stringify({
@@ -100,6 +108,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
         task: prompt, workspace, system_prompt: 'Smoke system prompt.',
         skill_names: ['smoke-skill'], mcp_config_path: mcpPath, output_dir: outputRoot,
         output: { log_file: 'task.log', result_file: 'task_result.md' }, trigger: { mode: 'once' },
+        ...taskOptions,
       },
     }));
     const child = spawn(process.execPath, ['dist/task/main.js'], {
@@ -117,6 +126,7 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
       child.once('error', reject);
       child.once('close', resolve);
     });
+    if (code === 2) return { code, output };
     const [runDirectory] = await readdir(outputRoot);
     return {
       code, output,
@@ -145,6 +155,16 @@ test('DSH task preserves the input, MCP and result contract with DiOS events dis
     assert.match(failure.result, /任务执行失败/);
     assert.match(failure.log, /\[error\]/);
     assert.doesNotMatch(success.output + failure.output + success.log + failure.log, /smoke-model-key|smoke-mcp/);
+
+    const previousCalls = mcpRequests.filter(request => request.method === 'tools/call').length;
+    const budget = await run('tool-budget', 'budget', 'mcp.json', { max_tool_rounds: 1 });
+    assert.equal(budget.code, 0, budget.output);
+    assert.equal(mcpRequests.filter(request => request.method === 'tools/call').length - previousCalls, 2);
+    assert.match(budget.result, /max_tool_rounds/);
+
+    const invalidBudget = await run('tool-budget', 'invalid-budget', 'mcp.json', { max_tool_rounds: 0 });
+    assert.equal(invalidBudget.code, 2, invalidBudget.output);
+    assert.match(invalidBudget.output, /task\.max_tool_rounds must be a positive integer/);
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

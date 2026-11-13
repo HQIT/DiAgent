@@ -14,6 +14,7 @@ export interface TaskConfig {
   resultFile: string;
   logFile: string;
   stepLimit: number;
+  maxToolRounds?: number;
   temperature?: number;
   skillsDir: string;
   skillNames: string[];
@@ -107,8 +108,8 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
   if (task.subagents != null && (!Array.isArray(task.subagents) || task.subagents.length > 0)) {
     throw new TaskConfigError('Configured subagents are not supported by the DSH task runner yet');
   }
-  if (task.thread_id || task.max_tool_rounds != null || task.middleware_config != null) {
-    throw new TaskConfigError('Task checkpoints, max_tool_rounds and middleware_config require the Python runner');
+  if (task.thread_id || task.middleware_config != null) {
+    throw new TaskConfigError('Task checkpoints and middleware_config require the Python runner');
   }
 
   const workspace = resolve(text(task.workspace, 'task.workspace', 'workspace'));
@@ -176,6 +177,8 @@ export async function loadTaskConfig(env: NodeJS.ProcessEnv): Promise<TaskConfig
     resultFile,
     logFile,
     stepLimit: positiveInteger(task.recursion_limit ?? 100, 'task.recursion_limit'),
+    maxToolRounds: task.max_tool_rounds == null
+      ? undefined : positiveInteger(task.max_tool_rounds, 'task.max_tool_rounds'),
     temperature: temperature ?? undefined,
     skillsDir,
     skillNames,

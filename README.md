@@ -19,6 +19,8 @@ npm run test:task
 
 独立部署时，在启动 DiAgent 的环境设置 `DIAGENT_ENABLE_DIOS_EVENTS=false`，模型的工具列表中就不会出现 `publish_event`。该变量只接受 `true` 和 `false`，其他值会在任务启动时报告配置错误。省略时默认启用，以兼容现有 DiOS 任务。
 
+可选的 `task.max_tool_rounds` 为正整数。模型在同一步尝试一个或多个工具调用时，共用一个轮次额度。超额的调用会在执行前被拒绝，模型仍可根据已有结果完成回答。模型若持续尝试，任务仍受 `task.recursion_limit` 和运行超时限制。
+
 ## 特性
 
 - **多模型支持**: 支持 Ollama、vLLM、OpenAI 及兼容 API 的 LLM 提供商

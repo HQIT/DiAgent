@@ -4,6 +4,10 @@
 
 ## 当前 ticket
 
+- [x] 支持 DiOS 下发的 `max_tool_rounds`。Windows 与 Linux 集成测试各 11 项通过，真实 DSH 对同一步的两次 MCP 调用只扣一个轮次，下一步超额调用未到达模拟工具。双评审通过。使用 AI4R Reviewer 配置脚本中的 `recursion_limit=120`、`max_tool_rounds=20`，本机 DiOS 调度 Linux 镜像成功回收模拟任务 `acc24a8df62d` 的产物。
+- [x] 完成本地 AI4R Reviewer `once` 新旧镜像对照。用同一份合成草稿、仓库 Reviewer 提示词和 `ecnu-max` 顺序运行两次。旧 Python 和新 DSH 均退出 0、写出 `review.md` 和 `task_result.md`，并各在隔离 DiOS 登记一条 `ai4r.review.completed`。两份报告均指出缺少样本量、基线定义不清，最终答复均为 `changes_requested`。另用模拟模型完成五项对照，模型返回 HTTP 400 时两版均退出 1 且无新事件，重新选用旧镜像后成功。
+- [x] 在本机 DiOS 用同一条 Reviewer 订阅演练一次性任务镜像切换。三轮依次为 Python `cd9c1fc296d3`、DSH `3614ed9c68b5`、回滚 Python `c7846ca71f1f`。每轮通过事件 API 提交 `ai4r.draft.submitted`，核对实际容器镜像、A2A 终态、`review.md`、DiOS 登记的 `task_result.md` 和一条 `ai4r.review.completed`。等任务完成后才重建 backend，复用同一 SQLite 和工作区，Agent、订阅和已完成任务跨重启保留。演练使用模拟模型和源码重建的旧镜像。
+- [ ] 在目标环境复验切换与回滚。先核对实际运行的旧镜像 ID 或 digest、候选镜像和有效的 Compose 配置，确认旧镜像保留且事件发布鉴权可用。`DIOS_DIAGENT_IMAGE` 对同一个 backend 下的一次性任务全局生效，Reviewer 单独试点使用隔离的 DiOS。切换和回滚前都暂停新任务投递，等 `submitted`、`working` 清空，再用原数据库和工作区重建 backend。当前任务容器的轮询由 backend 进程内协程负责，启动时未发现恢复这些轮询的逻辑。切换和回滚后各投一条独立草稿事件，核对任务终态、产物和完成事件。
 - [x] `publish_event` 通过本地 Linux 容器联调。DiAgent `4ec0ca3`、DiOS `f2433d9`、模拟模型、空 SQLite，无全局访问令牌。手动启动任务容器，合法事件返回 `dispatched`，非法来源被拒绝，需审批的事件返回 `approval_required`。三次运行共落库两条事件，均为合法来源，任务产物写入宿主机挂载的工作区。验收时为构建下载临时启用代理和重试，并给本地 DiOS 验收镜像补装 `sqlalchemy[asyncio]`，以满足其当前解析到的 SQLAlchemy 版本。
 - [x] DiOS A2A 调度器启动 Linux 试点镜像。使用相同镜像、临时数据库及模拟模型与直连 MCP，通过 `message/send` 提交、`tasks/get` 查终态。成功用例 `f94a7feb52ea` 验证了 DiOS 生成配置、挂载共享 Skill、实际调用 Skill 和 MCP、落盘日志及登记 `task_result.md`。失败用例 `d1d5e35e5297` 模拟模型返回 HTTP 400，DiOS 登记退出码 1 和 `failed`。宿主机的 Docker Desktop 路径通过 `DIOS_HOST_WORKSPACE_ROOT` 显式映射。
 - [x] 首轮直连 MCP 工具可见性已复验。早期模拟服务在处理缺少 `params` 的请求时抛错。修正响应后，延迟 `tools/list` 1.5 秒的回归在 Windows 和 Linux 均验证首个模型请求包含工具。DiOS 调度用例 `6b3fe7ab3f67` 将延迟拉到 3 秒，同样通过。双评审确认由现有 DSH 启动流程负责等待初始工具发现。

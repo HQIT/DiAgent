@@ -99,7 +99,7 @@ flowchart LR
 | `top_p/stop/max_tokens/tool_selection.tool_config` | Schema 接受。service 调用只传温度，`max_tokens` 进预处理对象但未传入模型构造，工具配置未接执行。 | 记录实际用到的字段及支持状态，显式预算不能落实时给出具体错误。 |
 | `user_id/user_context`、Redis、Skills 文件上限 | 字段或依赖存在。当前会话用内存，用户上下文未形成授权，Skills 文件上限未见执行接线。 | 以可观察行为验收。由可信配置和 DiOS 网关落实授权。 |
 | `role=tool`、历史 tool_calls | HTTP Schema 接受，带工具路径转换仅保留 system/user/assistant 文本。无工具 adapter 有 tool message 转换。 | 先覆盖 DiOS 文本历史。工具历史往返按实际独立调用验收。 |
-| `max_tool_rounds`、middleware | task 透传轮次字段，未证实底层执行限制。middleware 可按名称过滤，选项未见生效。 | 给已使用的运行预算定义 DSH 侧的验证；以实际日志和系统消息行为替代 Python 中间件细节。 |
+| `max_tool_rounds`、middleware | Python task 透传轮次字段，未证实底层执行限制。middleware 可按名称过滤，选项未见生效。 | DSH task 按尝试调用工具的模型步骤计数，同一步的多个调用共享额度。超额调用在派发前拒绝，模型可继续完成回答。middleware 配置仍待兼容。 |
 | A2A service 的角色和工具 | 只发 user 消息且无 tool selection；无工具路径可能绕过默认角色、Skills。 | 用实际 A2A fixture 明确并测试新版行为。 |
 
 依据：[预处理](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/core/preprocessor.py#L36) · [HTTP Schema](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/schemas/extended_request.py#L23) · [带工具路径的消息转换](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/core/agent.py#L377) · [通用消息转换](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/llm/base.py#L57) · [运行预算](https://github.com/Zewang0217/DiAgent/blob/12190ee37befc633c5d302491bba89ea49da450d/app/task/runner.py#L285)

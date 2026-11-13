@@ -72,6 +72,13 @@ async function mcpRows(path: string | undefined): Promise<object[]> {
 export async function writeTaskProfile(config: TaskConfig, home: string, runDirectory: string): Promise<string> {
   const skills = await skillRoots(config, home);
   const plugins = await mcpRows(config.mcpConfigPath);
+  if (config.maxToolRounds !== undefined) {
+    plugins.push({
+      id: 'diagent-tool-round-limit',
+      name: fileURLToPath(new URL('./plugins/tool-round-limit.js', import.meta.url)),
+      config: { maxToolRounds: config.maxToolRounds },
+    });
+  }
   if (config.isDiosEventPublishingEnabled) {
     plugins.unshift({
       id: 'diagent-publish-event',
